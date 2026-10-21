@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: nexusmind-supervisor
+
+dubbo:
+  application:
+    name: nexusmind-supervisor
+    qos-enable: false
+  protocol:
+    name: tri
+    port: 50051

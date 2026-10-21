@@ -1,0 +1,21 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: nexusmind-supervisor
+
+dubbo:
+  application:
+    name: nexusmind-supervisor
+    qos-enable: false
+  protocol:
+    name: tri
+    port: 50051
+  registry:
+    # 生产环境使用环境变量
+    address: ${NACOS_ADDRESS:nacos://nacos-server:8848}
+    parameters:
+      namespace: ${NACOS_NAMESPACE:production}
+  provider:
+    timeout: 120000

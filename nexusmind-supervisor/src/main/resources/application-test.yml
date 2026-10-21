@@ -1,0 +1,18 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: nexusmind-supervisor
+
+dubbo:
+  application:
+    name: nexusmind-supervisor
+    qos-enable: false
+  protocol:
+    name: tri
+    port: 50051
+  registry:
+    address: nacos://127.0.0.1:8848
+  provider:
+    timeout: 120000

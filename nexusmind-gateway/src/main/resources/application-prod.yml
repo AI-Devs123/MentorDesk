@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: nexusmind-gateway
+
+dubbo:
+  application:
+    name: nexusmind-gateway
+    qos-enable: false
+  registry:
+    # 生产环境使用环境变量
+    address: ${NACOS_ADDRESS:nacos://nacos-server:8848}
+    parameters:
+      namespace: ${NACOS_NAMESPACE:production}
+  consumer:
+    timeout: 120000
+    check: false

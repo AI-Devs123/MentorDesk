@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: nexusmind-gateway
+
+dubbo:
+  application:
+    name: nexusmind-gateway
+    qos-enable: false

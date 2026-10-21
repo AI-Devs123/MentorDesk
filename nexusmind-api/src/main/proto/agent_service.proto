@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package com.nexusmind.agent.facade;
+
+option java_multiple_files = true;
+option java_package = "com.nexusmind.agent.facade";
+option java_outer_classname = "AgentServiceProto";
+
+// 执行指令或用户提问
+message AgentStreamRequest {
+  string task_id = 1;
+  string session_id = 2;
+  string agent_name = 3;
+  string payload = 4;
+  map<string, string> metadata = 5;
+}
+
+// 流式下发的执行帧
+message AgentStreamResponse {
+  string task_id = 1;
+  int64 timestamp = 2;
+  string agent_name = 3;
+  string stage = 4; // PLANNING, RUNNING, SUSPENDED, COMPLETED, ERROR
+  string delta_chunk = 5;
+  bool requires_confirmation = 6;
+  string confirmation_payload = 7; // 当 requires_confirmation 为 true 时的 JSON
+}
+
+service AgentStreamingFacade {
+  // 服务端流式调用：客户端发送单次任务指令，服务端响应多 Agent 协同过程流
+  rpc ExecuteTaskStream (AgentStreamRequest) returns (stream AgentStreamResponse);
+
+  // 双向流式调用：支持客户端与 Agent 交互式协同
+  rpc BiDirectionalStream (stream AgentStreamRequest) returns (stream AgentStreamResponse);
+}
