@@ -1,18 +1,18 @@
-server:
-  port: 8081
-
 spring:
   application:
     name: nexusmind-supervisor
-
-dubbo:
-  application:
-    name: nexusmind-supervisor
-    qos-enable: false
-  protocol:
-    name: tri
-    port: 50051
-  registry:
-    address: nacos://127.0.0.1:8848
-  provider:
-    timeout: 120000
+  profiles:
+    active: dev
+  config:
+    import:
+      - optional:nacos:nexusmind-supervisor-dev.yaml
+  cloud:
+    nacos:
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
+        group: DEFAULT_GROUP
+        namespace: 8a7c1b01-nexusmind-dev-001  # 此处填 dev 命名空间的真实 Namespace ID
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: 8a7c1b01-nexusmind-dev-001

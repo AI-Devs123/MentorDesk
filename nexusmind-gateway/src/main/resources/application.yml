@@ -6,3 +6,8 @@ dubbo:
   application:
     name: nexusmind-gateway
     qos-enable: false
+  registry:
+    address: nacos://localhost:8848
+  consumer:
+    timeout: 120000
+    check: false

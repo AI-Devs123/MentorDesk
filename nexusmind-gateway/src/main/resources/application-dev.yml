@@ -1,16 +1,18 @@
-server:
-  port: 8080
-
 spring:
   application:
     name: nexusmind-gateway
-
-dubbo:
-  application:
-    name: nexusmind-gateway
-    qos-enable: false
-  registry:
-    address: nacos://127.0.0.1:8848
-  consumer:
-    timeout: 120000
-    check: false
+  profiles:
+    active: dev
+  config:
+    import:
+      - optional:nacos:nexusmind-gateway-dev.yaml
+  cloud:
+    nacos:
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
+        group: DEFAULT_GROUP
+        namespace: 8a7c1b01-nexusmind-dev-001  # 此处填 dev 命名空间的真实 Namespace ID
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: 8a7c1b01-nexusmind-dev-001
