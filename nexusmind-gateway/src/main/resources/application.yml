@@ -1,3 +1,8 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
 spring:
   application:
     name: nexusmind-gateway
@@ -11,3 +16,12 @@ dubbo:
   consumer:
     timeout: 120000
     check: false
+  protocol:
+    name: tri
+    port: -1  # 消费者不需要协议端口
+
+logging:
+  level:
+    root: INFO
+    com.nexusmind: DEBUG
+    org.apache.dubbo: WARN

@@ -6,6 +6,8 @@ dubbo:
   application:
     name: nexusmind-supervisor
     qos-enable: false
+  registry:
+    address: nacos://localhost:8848
   protocol:
     name: tri
     port: 50051

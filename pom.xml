@@ -63,5 +63,15 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- 保留方法参数名，Spring 才能通过反射解析 @RequestParam 等注解 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 </project>

@@ -26,10 +26,26 @@ message AgentStreamResponse {
   string confirmation_payload = 7; // 当 requires_confirmation 为 true 时的 JSON
 }
 
+// 取消任务请求（网关在前端断连时下发，即 RST_STREAM 语义）
+message CancelTaskRequest {
+  string task_id = 1;
+}
+
+// 取消任务响应
+message CancelTaskResponse {
+  bool found = 1;               // 是否找到对应任务
+  bool interrupted = 2;         // 执行线程是否已被立即中断
+  string message = 3;           // 文字说明
+  int32 active_task_count = 4;  // Supervisor 当前仍在执行的任务数
+}
+
 service AgentStreamingFacade {
   // 服务端流式调用：客户端发送单次任务指令，服务端响应多 Agent 协同过程流
   rpc ExecuteTaskStream (AgentStreamRequest) returns (stream AgentStreamResponse);
 
   // 双向流式调用：支持客户端与 Agent 交互式协同
   rpc BiDirectionalStream (stream AgentStreamRequest) returns (stream AgentStreamResponse);
+
+  // 取消任务：网关在前端 SSE 断连时调用，Supervisor 立即停止执行线程
+  rpc CancelTask (CancelTaskRequest) returns (CancelTaskResponse);
 }
