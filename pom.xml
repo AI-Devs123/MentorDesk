@@ -11,6 +11,7 @@
 
     <modules>
         <module>nexusmind-api</module>
+        <module>nexusmind-security</module>
         <module>nexusmind-supervisor</module>
         <module>nexusmind-gateway</module>
     </modules>
@@ -48,6 +49,13 @@
             <dependency>
                 <groupId>com.nexusmind</groupId>
                 <artifactId>nexusmind-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- 内部安全模块 -->
+            <dependency>
+                <groupId>com.nexusmind</groupId>
+                <artifactId>nexusmind-security</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
