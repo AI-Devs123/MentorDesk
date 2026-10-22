@@ -19,6 +19,12 @@
             <artifactId>nexusmind-api</artifactId>
         </dependency>
 
+        <!-- 内部安全模块依赖 -->
+        <dependency>
+            <groupId>com.nexusmind</groupId>
+            <artifactId>nexusmind-security</artifactId>
+        </dependency>
+
         <!-- Spring Boot Webflux (支持 Reactive + SSE) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

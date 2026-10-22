@@ -5,6 +5,8 @@ import com.nexusmind.agent.facade.AgentStreamResponse;
 import com.nexusmind.agent.facade.CancelTaskRequest;
 import com.nexusmind.agent.facade.CancelTaskResponse;
 import com.nexusmind.agent.facade.DubboAgentStreamingFacadeTriple;
+import com.nexusmind.security.rbac.AgentSecured;
+import com.nexusmind.security.rbac.AgentRole;
 import org.apache.dubbo.common.stream.StreamObserver;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.apache.dubbo.rpc.RpcContext;
@@ -30,6 +32,7 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
     // 运行中任务的执行线程注册表：taskId -> Thread（收到 RST_STREAM 后用于立即中断线程）
     private static final Map<String, Thread> RUNNING_THREADS = new ConcurrentHashMap<>();
 
+    @AgentSecured(allowedAgents = {"supervisor"})
     @Override
     public void executeTaskStream(AgentStreamRequest request, StreamObserver<AgentStreamResponse> responseObserver) {
         String taskId = request.getTaskId();
@@ -125,6 +128,7 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
         });
     }
 
+    @AgentSecured(allowedAgents = {"supervisor"})
     @Override
     public StreamObserver<AgentStreamRequest> biDirectionalStream(StreamObserver<AgentStreamResponse> responseObserver) {
         return new StreamObserver<AgentStreamRequest>() {
@@ -155,6 +159,7 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
      * 取消任务：网关在前端 SSE 断连时通过 Dubbo 下发 RST_STREAM。
      * 收到后立即置位中断标志，并唤醒/中断正在执行的线程，实现“立即停止后续执行”。
      */
+    @AgentSecured(allowedAgents = {"supervisor"})
     @Override
     public CancelTaskResponse cancelTask(CancelTaskRequest request) {
         String taskId = request.getTaskId();

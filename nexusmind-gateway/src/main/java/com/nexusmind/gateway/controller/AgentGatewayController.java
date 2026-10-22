@@ -5,6 +5,7 @@ import com.nexusmind.agent.facade.AgentStreamResponse;
 import com.nexusmind.agent.facade.AgentStreamingFacade;
 import com.nexusmind.agent.facade.CancelTaskRequest;
 import com.nexusmind.agent.facade.CancelTaskResponse;
+import com.nexusmind.security.rbac.AgentRbacContext;
 import org.apache.dubbo.common.stream.StreamObserver;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.slf4j.Logger;
@@ -36,7 +37,8 @@ public class AgentGatewayController {
     @GetMapping(value = "/api/v1/agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<Map<String, Object>> streamAgent(
             @RequestParam(name = "prompt", defaultValue = "默认任务") String prompt,
-            @RequestParam(name = "agent", defaultValue = "Supervisor") String agent) {
+            @RequestParam(name = "agent", defaultValue = "Supervisor") String agent,
+            @RequestParam(name = "agentRole", defaultValue = "supervisor") String agentRole) {
 
         return Flux.<Map<String, Object>>create(sink -> {
             String taskId = "TASK-" + System.currentTimeMillis();
@@ -45,8 +47,11 @@ public class AgentGatewayController {
             // 注册该任务的中断标志位
             TASK_CANCELLATION_FLAGS.put(taskId, isCancelled);
 
-            log.info(">>> [Gateway] 收到前端 SSE 握手请求, taskId: {}, prompt: {}, agent: {}",
-                    taskId, prompt, agent);
+            // 设置 Agent 身份到 RPC 上下文（RBAC 权限检查将使用此身份）
+            AgentRbacContext.setCurrentAgent(agentRole);
+
+            log.info(">>> [Gateway] 收到前端 SSE 握手请求, taskId: {}, prompt: {}, agent: {}, agentRole: {}",
+                    taskId, prompt, agent, agentRole);
             log.info("📡 [Gateway] 下游 Dubbo Triple 开始调用 Supervisor 流式服务");
 
             AgentStreamRequest request = AgentStreamRequest.newBuilder()
@@ -136,6 +141,8 @@ public class AgentGatewayController {
             log.info("📊 [Gateway] Flux 响应式管道被取消");
         }).doFinally(signalType -> {
             log.info("🏁 [Gateway] SSE 流程结束 (signalType: {})", signalType);
+            // 清理 RBAC 上下文
+            AgentRbacContext.clearContext();
         });
     }
 

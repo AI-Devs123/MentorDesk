@@ -11,3 +11,5 @@ dubbo:
   protocol:
     name: tri
     port: 50051
+  provider:
+    filter: agentRbacDubboFilter
