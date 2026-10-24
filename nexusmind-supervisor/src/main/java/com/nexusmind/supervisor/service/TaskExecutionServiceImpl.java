@@ -80,4 +80,57 @@ public class TaskExecutionServiceImpl implements TaskExecutionService {
 
         return response;
     }
+    /**
+     * 中止/拒绝任务执行
+     *
+     * 功能：
+     * 1. 立即销毁 Redis 中的待办快照
+     * 2. 标记任务被取消，阻断后续 DAG 流转
+     * 3. 返回熔断响应，确保沙箱文件完好无损
+     *
+     * @param executionId 执行ID
+     * @return 操作结果
+     */
+    @Override
+    public Map<String, Object> abortTask(String executionId) {
+        log.warn("🛑 [Supervisor] 收到任务中止拒绝请求, executionId: {}", executionId);
+
+        Map<String, Object> response = new HashMap<>();
+
+        // 参数校验
+        if (executionId == null || executionId.trim().isEmpty()) {
+            log.error("❌ 缺少必要参数: execution_id");
+            response.put("status", "ERROR");
+            response.put("code", "PARAM_MISSING");
+            response.put("message", "缺少 execution_id");
+            return response;
+        }
+
+        try {
+            // 1. 立即销毁 Redis 中的待办快照
+            boolean snapshotRemoved = snapshotRepository.discardSnapshot(executionId);
+            log.info("🗑️ [Supervisor] 快照清理结果: executionId={}, removed={}", executionId, snapshotRemoved);
+
+            // 2. 标记任务被取消，阻断后续潜在的后台线程流转
+            AgentStreamingFacadeImpl.markTaskCancelled(executionId);
+            log.info("🔒 [Supervisor] 任务已标记为已取消: executionId={}", executionId);
+
+            // 3. 返回熔断响应
+            response.put("status", "ABORTED");
+            response.put("code", "OK");
+            response.put("execution_id", executionId);
+            response.put("message", "用户拒绝操作，任务回滚中断");
+            response.put("snapshot_purged", snapshotRemoved);
+
+            log.info("✅ [Supervisor] 任务已安全中止，快照已清理: executionId={}", executionId);
+
+        } catch (Exception e) {
+            log.error("❌ 处理中止请求异常", e);
+            response.put("status", "ERROR");
+            response.put("code", "PROCESS_ERROR");
+            response.put("message", "处理过程中发生异常: " + e.getMessage());
+        }
+
+        return response;
+    }
 }

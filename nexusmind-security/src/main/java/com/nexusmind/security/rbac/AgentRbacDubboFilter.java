@@ -51,21 +51,36 @@ public class AgentRbacDubboFilter implements Filter {
             log.info("🔍 [RBAC-Filter] 拦截RPC调用: interface={}, method={}", 
                 invoker.getInterface().getSimpleName(), invocation.getMethodName());
             
-            // 1. 从 RPC 隐式参数中获取当前 Agent 标识
-            // ⚠️ Provider端必须使用 getServerAttachment()
+            // 1. 首先尝试从 ServerAttachment 获取（标准方式）
             String currentAgentId = RpcContext.getServerAttachment()
                     .getAttachment(AGENT_ROLE_KEY);
             
-            log.info("🔍 [RBAC-Filter] 从RpcContext提取Agent身份: {}", 
+            log.debug("🔍 [RBAC-Filter] 尝试从 ServerAttachment 提取 Agent 身份: {}", 
+                currentAgentId != null ? currentAgentId : "null");
+            
+            // 2. 如果 ServerAttachment 中没有，尝试 ClientAttachment（备用方式）
+            // 这是解决 Dubbo Triple gRPC attachment 传递问题的备用通道
+            if (currentAgentId == null || currentAgentId.trim().isEmpty()) {
+                currentAgentId = RpcContext.getClientAttachment()
+                        .getAttachment(AGENT_ROLE_KEY);
+                
+                if (currentAgentId != null && !currentAgentId.trim().isEmpty()) {
+                    log.info("✅ [RBAC-Filter] 从 ClientAttachment 备用通道获取 Agent 身份: {}", currentAgentId);
+                } else {
+                    log.debug("🔍 [RBAC-Filter] ClientAttachment 也未找到 Agent 身份");
+                }
+            }
+            
+            log.info("🔍 [RBAC-Filter] 最终提取的 Agent 身份: {}", 
                 currentAgentId != null ? currentAgentId : "null");
             
             if (currentAgentId == null || currentAgentId.trim().isEmpty()) {
-                // 如果未设置 Agent 身份，允许继续（可能是非 Agent 调用）
-                log.debug("No Agent identity found in RpcContext, allowing call");
+                // 如果还是未设置，允许继续（可能是非 Agent 调用或测试调用）
+                log.debug("ℹ️ [RBAC-Filter] 未找到 Agent 身份，允许继续");
                 return invoker.invoke(invocation);
             }
             
-            // 2. 转换为 AgentRole 枚举
+            // 3. 转换为 AgentRole 枚举
             AgentRole currentRole = AgentRole.fromId(currentAgentId);
             if (currentRole == null) {
                 log.error("Invalid Agent role ID: {}", currentAgentId);
@@ -73,7 +88,7 @@ public class AgentRbacDubboFilter implements Filter {
                         "SecurityGuard RBAC 拦截: 无效的 Agent 角色标识 [" + currentAgentId + "]");
             }
             
-            // 3. 查找目标方法
+            // 4. 查找目标方法
             Method method = findMethod(
                     invoker.getInterface(),
                     invocation.getMethodName(),
@@ -87,20 +102,20 @@ public class AgentRbacDubboFilter implements Filter {
                 return invoker.invoke(invocation);
             }
             
-            // 4. 查找 @AgentSecured 注解
+            // 5. 查找 @AgentSecured 注解
             AgentSecured secured = method.getAnnotation(AgentSecured.class);
             if (secured == null) {
                 // 尝试从类级别获取注解
                 secured = invoker.getInterface().getAnnotation(AgentSecured.class);
             }
             
-            // 5. 如果方法没有 @AgentSecured 注解，允许调用
+            // 6. 如果方法没有 @AgentSecured 注解，允许调用
             if (secured == null) {
                 log.debug("No @AgentSecured annotation found, allowing call");
                 return invoker.invoke(invocation);
             }
             
-            // 6. 检查 Agent 是否在允许列表中
+            // 7. 检查 Agent 是否在允许列表中
             boolean authorized = Arrays.asList(secured.allowedAgents())
                     .contains(currentAgentId);
             
@@ -119,7 +134,7 @@ public class AgentRbacDubboFilter implements Filter {
                 throw new RpcException(RpcException.FORBIDDEN_EXCEPTION, errorMsg);
             }
             
-            // 7. 如果需要审计，记录调用
+            // 8. 如果需要审计，记录调用
             if (secured.audit()) {
                 log.info("AUDIT: Agent [{}] called [{}::{}]",
                         currentAgentId,
@@ -132,7 +147,7 @@ public class AgentRbacDubboFilter implements Filter {
                     invoker.getInterface().getSimpleName(),
                     invocation.getMethodName());
             
-            // 8. 权限检查通过，继续调用
+            // 9. 权限检查通过，继续调用
             return invoker.invoke(invocation);
             
         } catch (RpcException e) {

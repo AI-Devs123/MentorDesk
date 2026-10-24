@@ -42,6 +42,8 @@ public class AgentRbacContext {
     /**
      * 设置当前 Agent 角色 ID 到 Dubbo RpcContext
      * 
+     * 🔧 重要：在 Dubbo Triple 调用前必须设置，以确保 attachment 被传递到服务端
+     * 
      * @param agentRoleId Agent 角色 ID（如 "SUPERVISOR"）
      * @throws IllegalArgumentException 如果 agentRoleId 为空
      */
@@ -57,12 +59,14 @@ public class AgentRbacContext {
         }
         
         try {
+            // 📌 关键：必须使用 getClientAttachment() 设置，Dubbo 会自动在 RPC 调用时传递给服务端
+            // 在 Dubbo Triple/gRPC 中，这个 attachment 会被序列化为 metadata 并发送给服务端
             RpcContext.getClientAttachment()
                     .setAttachment(AGENT_ROLE_KEY, agentRoleId);
             
-            log.debug("Set current Agent to: {}", agentRoleId);
+            log.info("✅ [AgentRbacContext] 设置 Agent 角色: {} (已附加到 RpcContext.ClientAttachment)", agentRoleId);
         } catch (Exception e) {
-            log.error("Failed to set Agent role in RpcContext", e);
+            log.error("❌ [AgentRbacContext] 设置 Agent 角色失败", e);
             throw new RuntimeException("Failed to set Agent context", e);
         }
     }

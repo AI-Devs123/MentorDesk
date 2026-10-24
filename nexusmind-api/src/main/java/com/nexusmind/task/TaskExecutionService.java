@@ -16,4 +16,12 @@ public interface TaskExecutionService {
      * @return 操作结果
      */
     Map<String, Object> resumeTask(String executionId, String token);
+    
+    /**
+     * 中止/拒绝任务执行
+     * 
+     * @param executionId 执行ID
+     * @return 操作结果
+     */
+    Map<String, Object> abortTask(String executionId);
 }

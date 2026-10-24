@@ -145,4 +145,74 @@ public class TaskExecutionController {
             return "Token验证异常: " + e.getMessage();
         }
     }
+
+    /**
+     * 中止/拒绝任务执行
+     * 
+     * 请求体:
+     * {
+     *   "execution_id": "xxx"
+     * }
+     * 
+     * 功能：
+     * 1. 调用 Supervisor 的 Dubbo 服务销毁 Redis 快照
+     * 2. 标记任务被取消，阻断后续 DAG 流转
+     * 3. 返回熔断响应，确保沙箱文件完好无损
+     * 
+     * @param payload 包含 execution_id
+     * @return 操作结果
+     */
+    @PostMapping("/abort")
+    public ResponseEntity<?> abortTask(@RequestBody Map<String, String> payload) {
+        String executionId = payload.get("execution_id");
+
+        log.warn("🛑 [Gateway] 收到任务中止拒绝请求: executionId={}", executionId);
+
+        // 参数校验
+        if (executionId == null || executionId.trim().isEmpty()) {
+            Map<String, Object> errorResult = Map.of(
+                "status", "ERROR",
+                "code", "PARAM_MISSING",
+                "message", "缺少 execution_id"
+            );
+            log.error("❌ [Gateway] 参数校验失败: {}", errorResult);
+            return ResponseEntity.badRequest().body(errorResult);
+        }
+
+        try {
+            // 调用 Dubbo 服务
+            Map<String, Object> result = taskExecutionService.abortTask(executionId);
+
+            // 根据结果返回相应的 HTTP 状态码
+            String status = (String) result.get("status");
+
+            if ("ABORTED".equals(status)) {
+                // ✅ 成功中止
+                log.info("✅ [Gateway] 任务已成功中止: executionId={}", executionId);
+                return ResponseEntity.ok(result);
+            } else if ("ERROR".equals(status)) {
+                // ❌ 错误处理
+                String code = (String) result.get("code");
+                if ("PARAM_MISSING".equals(code)) {
+                    // 参数缺失 → 400
+                    return ResponseEntity.badRequest().body(result);
+                } else {
+                    // 其他错误 → 500
+                    return ResponseEntity.status(500).body(result);
+                }
+            } else {
+                // 其他状态 → 200
+                return ResponseEntity.ok(result);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ [Gateway] 处理中止请求异常: {}", e.getMessage(), e);
+            Map<String, Object> errorResult = Map.of(
+                "status", "ERROR",
+                "code", "GATEWAY_ERROR",
+                "message", "网关处理异常: " + e.getMessage()
+            );
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
 }

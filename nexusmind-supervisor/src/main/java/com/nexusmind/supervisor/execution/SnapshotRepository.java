@@ -117,6 +117,17 @@ public class SnapshotRepository {
     }
 
     /**
+     * 丢弃/清除快照（用户拒绝或回滚时调用）
+     * 确保快照被彻底清理，防止残留
+     * 
+     * @param executionId 执行ID
+     * @return 是否清理成功
+     */
+    public boolean discardSnapshot(String executionId) {
+        return deleteSnapshot(executionId);
+    }
+
+    /**
      * 校验令牌并消费快照（单次防重放）
      * 
      * @param executionId 执行ID
