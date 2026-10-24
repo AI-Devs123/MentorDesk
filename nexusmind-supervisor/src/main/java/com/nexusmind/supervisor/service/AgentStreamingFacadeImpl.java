@@ -175,6 +175,7 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
                     suspendData.put("risk_level", snapshot.getRiskLevel().name());
                     suspendData.put("description", snapshot.getOperationDescription());
                     suspendData.put("change_preview", snapshot.getChangePreview());
+                    suspendData.put("affected_files", List.of("old_file.py"));
                     suspendData.put("expires_at", snapshot.getExpiresAt().toString());
                     
                     String dataJson = objectMapper.writeValueAsString(suspendData);
@@ -234,6 +235,7 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
                         suspendData.put("risk_level", snapshot.getRiskLevel().name());
                         suspendData.put("description", snapshot.getOperationDescription());
                         suspendData.put("change_preview", snapshot.getChangePreview());
+                        suspendData.put("affected_files", List.of("old_file.py"));
                         suspendData.put("expires_at", snapshot.getExpiresAt().toString());
                         
                         String dataJson = objectMapper.writeValueAsString(suspendData);

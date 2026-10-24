@@ -5,11 +5,13 @@ spring:
     host: localhost
     port: 6379
     timeout: 3000ms
+    connect-timeout: 1s
     lettuce:
       pool:
         max-active: 8
         max-idle: 8
         min-idle: 0
+      shutdown-timeout: 100ms
 
 dubbo:
   application:
