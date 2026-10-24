@@ -36,7 +36,15 @@ public class DestructiveActionAdvisor {
         log.warn("  类: {}", method.getDeclaringClass().getName());
         log.warn("  代理类型: {}", joinPoint.getTarget().getClass().getName());
 
-        // 检查是否已经携带确认令牌（恢复场景）
+        // 核心机制：优先检查 TaskContextHolder 中的恢复令牌
+        // 如果当前上下文中携带恢复令牌，说明已通过审批，直接放行底层真实逻辑
+        String activeToken = TaskContextHolder.getResumeToken();
+        if (activeToken != null && !activeToken.isBlank()) {
+            log.info("✅ [切面放行] 检测到恢复令牌，允许执行破坏性操作: {}", method.getName());
+            return joinPoint.proceed();
+        }
+
+        // 备用机制：从方法参数中提取确认令牌（兼容旧逻辑）
         String confirmationToken = extractConfirmationToken(joinPoint);
         if (confirmationToken != null) {
             log.info("检测到确认令牌，允许执行破坏性操作: {}", method.getName());

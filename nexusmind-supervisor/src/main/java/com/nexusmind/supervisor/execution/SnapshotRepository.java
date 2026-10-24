@@ -115,4 +115,45 @@ public class SnapshotRepository {
             return false;
         }
     }
+
+    /**
+     * 校验令牌并消费快照（单次防重放）
+     * 
+     * @param executionId 执行ID
+     * @param token 确认令牌
+     * @return 校验是否通过
+     */
+    public boolean validateAndConsumeToken(String executionId, String token) {
+        if (redisTemplate == null) {
+            log.warn("⚠️ Redis未注入，无法校验令牌: executionId={}", executionId);
+            return false;
+        }
+        
+        try {
+            String key = SNAPSHOT_KEY_PREFIX + executionId;
+            String json = redisTemplate.opsForValue().get(key);
+            
+            if (json == null) {
+                log.warn("⚠️ 快照不存在或已过期，校验失败: key={}", key);
+                return false;
+            }
+            
+            ExecutionSnapshot snapshot = objectMapper.readValue(json, ExecutionSnapshot.class);
+            
+            // 校验令牌是否一致
+            if (token != null && token.equals(snapshot.getConfirmationToken())) {
+                // 校验成功立即删除快照，防止二次重放破坏
+                redisTemplate.delete(key);
+                log.info("✅ 令牌校验成功，快照已消费: executionId={}", executionId);
+                return true;
+            } else {
+                log.warn("❌ 令牌不匹配或无效: executionId={}", executionId);
+                return false;
+            }
+            
+        } catch (Exception e) {
+            log.error("❌ 校验令牌失败: executionId={}, error={}", executionId, e.getMessage(), e);
+            return false;
+        }
+    }
 }

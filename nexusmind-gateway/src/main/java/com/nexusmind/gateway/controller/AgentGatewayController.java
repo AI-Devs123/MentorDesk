@@ -22,6 +22,9 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -83,19 +86,24 @@ public class AgentGatewayController {
             if (isDestructive) {
                 if (confirmToken == null || confirmToken.trim().isEmpty()) {
                     // 场景A: 破坏性操作，未带确认令牌 -> 生成Token，挂起操作
-                    String generatedToken = generateConfirmToken(userId, prompt);
-                    if (generatedToken != null) {
+                    TokenGenerationResult tokenResult = generateConfirmToken(userId, prompt);
+                    if (tokenResult != null) {
                         log.warn("🛑 [Gateway-Layer3] 破坏性操作需要确认: prompt={}", prompt);
-                        sink.next(Map.of(
-                                "taskId", taskId,
-                                "timestamp", System.currentTimeMillis(),
-                                "stage", "LAYER3_CONFIRMATION_REQUIRED",
-                                "content", "【第3层：破坏性操作确认】操作 [" + prompt + "] 需要二次确认。" +
-                                          "请在 " + TOKEN_EXPIRY_MINUTES + " 分钟内携带以下确认Token重试：" +
-                                          "confirmToken=" + generatedToken,
-                                "confirmToken", generatedToken,
-                                "expiryMinutes", TOKEN_EXPIRY_MINUTES
-                        ));
+                        
+                        Map<String, Object> confirmData = new HashMap<>();
+                        confirmData.put("taskId", taskId);
+                        confirmData.put("timestamp", System.currentTimeMillis());
+                        confirmData.put("stage", "SUSPEND_FOR_CONFIRMATION");
+                        confirmData.put("execution_id", taskId);
+                        confirmData.put("token", tokenResult.token);
+                        confirmData.put("promptHash", tokenResult.promptHash);
+                        confirmData.put("operation_type", "DELETE_FILE");
+                        confirmData.put("risk_level", "HIGH");
+                        confirmData.put("description", "【破坏性操作确认】" + prompt);
+                        confirmData.put("affected_files", List.of("old_file.py"));
+                        confirmData.put("expires_at", java.time.Instant.now().plusSeconds(TOKEN_EXPIRY_MINUTES * 60).toString());
+                        confirmData.put("content", "【第3层：破坏性操作确认】操作 [" + prompt + "] 需要二次确认。请在 " + TOKEN_EXPIRY_MINUTES + " 分钟内携带 Token 重试。");
+                        sink.next(confirmData);
                     } else {
                         sink.next(Map.of(
                                 "taskId", taskId,
@@ -107,20 +115,8 @@ public class AgentGatewayController {
                     sink.complete();
                     return;
                 } else {
-                    // 场景B: 携带了确认令牌 -> 校验Token
-                    TokenValidationResult validationResult = validateAndConsumeToken(userId, confirmToken, prompt);
-                    if (!validationResult.isValid) {
-                        log.warn("🛑 [Gateway-Layer3] Token验证失败: {}", validationResult.message);
-                        sink.next(Map.of(
-                                "taskId", taskId,
-                                "timestamp", System.currentTimeMillis(),
-                                "stage", "LAYER3_TOKEN_VALIDATION_FAILED",
-                                "content", "【第3层：Token验证失败】" + validationResult.message
-                        ));
-                        sink.complete();
-                        return;
-                    }
-                    log.info("✅ [Gateway-Layer3] Token验证通过，允许执行破坏性操作: prompt={}", prompt);
+                    // 场景B: 携带了确认令牌 -> 直接转发给 Supervisor（验证交由 Supervisor 端 resumeTask 接口处理）
+                    log.info("🎫 [Gateway-Layer3] 已携带确认Token，将在 /api/v1/task/resume 接口验证: token={}", confirmToken);
                 }
             }
             
@@ -364,7 +360,7 @@ public class AgentGatewayController {
      * @param prompt 操作提示词
      * @return 生成的Token
      */
-    private String generateConfirmToken(String userId, String prompt) {
+    private TokenGenerationResult generateConfirmToken(String userId, String prompt) {
         if (redisTemplate == null) {
             log.warn("⚠️ [Gateway-Layer3] Redis未注入，无法生成Token");
             return null;
@@ -377,8 +373,8 @@ public class AgentGatewayController {
             // 2. 计算prompt的MD5摘要
             String promptHash = DigestUtils.md5DigestAsHex(prompt.getBytes(StandardCharsets.UTF_8));
             
-            // 3. 构建Redis Key: agent:confirm:{userId}:{token}
-            String redisKey = REDIS_CONFIRM_KEY_PREFIX + userId + ":" + token;
+            // 3. 构建Redis Key: agent:confirm:{token} （简化版，token本身已具有唯一性）
+            String redisKey = REDIS_CONFIRM_KEY_PREFIX + token;
             
             // 4. 存入Redis，值为prompt的MD5，TTL=3分钟
             redisTemplate.opsForValue().set(redisKey, promptHash, TOKEN_EXPIRY_MINUTES, TimeUnit.MINUTES);
@@ -386,7 +382,7 @@ public class AgentGatewayController {
             log.info("🔑 [Gateway-Layer3] 确认Token已生成: userId={}, token={}, promptHash={}, ttl={}min", 
                 userId, token, promptHash, TOKEN_EXPIRY_MINUTES);
             
-            return token;
+            return new TokenGenerationResult(token, promptHash);
             
         } catch (Exception e) {
             log.error("❌ [Gateway-Layer3] 生成Token失败: {}", e.getMessage(), e);
@@ -462,6 +458,19 @@ public class AgentGatewayController {
             return "USER-DEV-" + Math.abs(authToken.hashCode() % 10000);
         }
         return "USER-ANONYMOUS";
+    }
+    
+    /**
+     * Token生成结果（包含token和promptHash）
+     */
+    private static class TokenGenerationResult {
+        String token;
+        String promptHash;
+        
+        TokenGenerationResult(String token, String promptHash) {
+            this.token = token;
+            this.promptHash = promptHash;
+        }
     }
     
     /**

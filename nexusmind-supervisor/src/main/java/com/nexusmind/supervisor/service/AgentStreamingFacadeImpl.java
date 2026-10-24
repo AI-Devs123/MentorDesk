@@ -42,9 +42,6 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
     @Autowired
     private SnapshotRepository snapshotRepository;
     
-    @Autowired
-    private DemoDestructiveService demoDestructiveService;
-    
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @AgentSecured(allowedAgents = {"supervisor"})
@@ -65,32 +62,6 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
             // 注册执行线程，供 cancelTask 收到 RST_STREAM 时立即中断
             RUNNING_THREADS.put(taskId, Thread.currentThread());
             try {
-                // 🔥 检测是否为破坏性操作触发测试（演示 AOP 拦截）
-                // 使用特殊触发词 "cleanup old_file" 避免被 Gateway 第3层拦截
-                log.info(">>> [Supervisor] 收到 Prompt: {}", prompt);
-                log.info(">>> [Supervisor] demoDestructiveService 注入状态: {}", 
-                    demoDestructiveService != null ? "已注入" : "未注入(NULL)");
-                
-                if (prompt != null && (prompt.toLowerCase().contains("delete old_file.py") 
-                    || prompt.toLowerCase().contains("cleanup old_file"))) {
-                    log.warn("🛑 [Supervisor] 检测到破坏性操作测试: {}", prompt);
-                    
-                if (demoDestructiveService != null) {
-                        log.warn("🛑 [Supervisor] 准备调用 demoDestructiveService.deleteOldFile()");
-                        try {
-                            // 触发破坏性操作，会被 AOP 拦截
-                            demoDestructiveService.deleteOldFile("old_file.py");
-                            log.warn("🛑 [Supervisor] deleteOldFile() 调用完成（不应该执行到这里）");
-                        } catch (ExecutionSuspendedException suspendEx) {
-                            // AOP 拦截成功
-                            log.warn("✅ [Supervisor] AOP 成功拦截，捕获到 ExecutionSuspendedException");
-                            throw suspendEx;
-                        }
-                    } else {
-                        log.error("❌ [Supervisor] demoDestructiveService 未注入，无法测试 AOP");
-                    }
-                }
-                
                 // 定义 5 个阶段的任务流程
                 List<String[]> stages = List.of(
                         new String[]{"SECURITY_GUARD_SCAN", "【安全网关】执行 RAG 安全防护检测，拦截敏感信息..."},
