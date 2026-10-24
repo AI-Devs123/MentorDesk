@@ -12,4 +12,4 @@ dubbo:
     name: tri
     port: 50051
   provider:
-    filter: agentRbacDubboFilter
+    filter: destructiveOperationDubboFilter,agentRbacDubboFilter

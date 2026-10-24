@@ -15,9 +15,11 @@ public class AgentStreamRequest implements Serializable {
     private String agentName;
     private String payload;
     private Map<String, String> metadata;
+    private String confirmationToken;  // 破坏性操作确认Token
 
     public AgentStreamRequest() {
         this.metadata = new HashMap<>();
+        this.confirmationToken = "";
     }
 
     public static Builder newBuilder() {
@@ -64,6 +66,14 @@ public class AgentStreamRequest implements Serializable {
         this.metadata = metadata;
     }
 
+    public String getConfirmationToken() {
+        return confirmationToken;
+    }
+
+    public void setConfirmationToken(String confirmationToken) {
+        this.confirmationToken = confirmationToken;
+    }
+
     public static class Builder {
         private final AgentStreamRequest request = new AgentStreamRequest();
 
@@ -89,6 +99,11 @@ public class AgentStreamRequest implements Serializable {
 
         public Builder setMetadata(Map<String, String> metadata) {
             request.metadata = metadata;
+            return this;
+        }
+
+        public Builder setConfirmationToken(String confirmationToken) {
+            request.confirmationToken = confirmationToken;
             return this;
         }
 

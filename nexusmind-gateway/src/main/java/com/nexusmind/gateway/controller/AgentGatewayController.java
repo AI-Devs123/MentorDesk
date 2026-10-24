@@ -38,7 +38,8 @@ public class AgentGatewayController {
     public Flux<Map<String, Object>> streamAgent(
             @RequestParam(name = "prompt", defaultValue = "默认任务") String prompt,
             @RequestParam(name = "agent", defaultValue = "Supervisor") String agent,
-            @RequestParam(name = "agentRole", defaultValue = "supervisor") String agentRole) {
+            @RequestParam(name = "agentRole", defaultValue = "supervisor") String agentRole,
+            @RequestParam(name = "token", required = false) String token) {
 
         return Flux.<Map<String, Object>>create(sink -> {
             String taskId = "TASK-" + System.currentTimeMillis();
@@ -50,17 +51,24 @@ public class AgentGatewayController {
             // 设置 Agent 身份到 RPC 上下文（RBAC 权限检查将使用此身份）
             AgentRbacContext.setCurrentAgent(agentRole);
 
-            log.info(">>> [Gateway] 收到前端 SSE 握手请求, taskId: {}, prompt: {}, agent: {}, agentRole: {}",
-                    taskId, prompt, agent, agentRole);
+            log.info(">>> [Gateway] 收到前端 SSE 握手请求, taskId: {}, prompt: {}, agent: {}, agentRole: {}, token: {}",
+                    taskId, prompt, agent, agentRole, token != null ? "****" : "null");
             log.info("📡 [Gateway] 下游 Dubbo Triple 开始调用 Supervisor 流式服务");
 
             AgentStreamRequest request = AgentStreamRequest.newBuilder()
                     .setTaskId(taskId)
                     .setAgentName(agent)
                     .setPayload(prompt)
+                    .setConfirmationToken(token != null ? token : "")
                     .build();
 
             try {
+                // Token已通过query参数传递，Dubbo Filter会从Invocation中提取
+                // 无需在RpcContext中设置
+                if (token != null && !token.isEmpty()) {
+                    log.info("🔑 [Gateway] Token参数已接收: {}", "****");
+                }
+                
                 // 发起 Dubbo Triple 流式调用
                 agentStreamingFacade.executeTaskStream(request, new StreamObserver<AgentStreamResponse>() {
                     @Override

@@ -5,6 +5,7 @@ import com.nexusmind.agent.facade.AgentStreamResponse;
 import com.nexusmind.agent.facade.CancelTaskRequest;
 import com.nexusmind.agent.facade.CancelTaskResponse;
 import com.nexusmind.agent.facade.DubboAgentStreamingFacadeTriple;
+import com.nexusmind.security.destructive.DestructiveOperation;
 import com.nexusmind.security.rbac.AgentSecured;
 import com.nexusmind.security.rbac.AgentRole;
 import org.apache.dubbo.common.stream.StreamObserver;
@@ -32,6 +33,7 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
     // 运行中任务的执行线程注册表：taskId -> Thread（收到 RST_STREAM 后用于立即中断线程）
     private static final Map<String, Thread> RUNNING_THREADS = new ConcurrentHashMap<>();
 
+    @DestructiveOperation(value = "Agent任务流式执行", requireConfirmation = true)
     @AgentSecured(allowedAgents = {"supervisor"})
     @Override
     public void executeTaskStream(AgentStreamRequest request, StreamObserver<AgentStreamResponse> responseObserver) {
