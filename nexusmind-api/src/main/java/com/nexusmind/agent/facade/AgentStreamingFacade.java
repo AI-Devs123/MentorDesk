@@ -1,5 +1,6 @@
 package com.nexusmind.agent.facade;
 
+import com.nexusmind.security.rbac.AgentSecured;
 import org.apache.dubbo.common.stream.StreamObserver;
 
 /**
@@ -13,6 +14,7 @@ public interface AgentStreamingFacade {
      * @param request 任务请求
      * @param responseObserver 响应观察者
      */
+    @AgentSecured(allowedAgents = {"supervisor"})
     void executeTaskStream(AgentStreamRequest request, StreamObserver<AgentStreamResponse> responseObserver);
 
     /**
@@ -20,6 +22,7 @@ public interface AgentStreamingFacade {
      *
      * @return 请求观察者
      */
+    @AgentSecured(allowedAgents = {"supervisor"})
     StreamObserver<AgentStreamRequest> biDirectionalStream(StreamObserver<AgentStreamResponse> responseObserver);
 
     /**
@@ -29,5 +32,6 @@ public interface AgentStreamingFacade {
      * @param request 含 taskId 的取消请求
      * @return 取消处理结果
      */
+    @AgentSecured(allowedAgents = {"supervisor"})
     CancelTaskResponse cancelTask(CancelTaskRequest request);
 }

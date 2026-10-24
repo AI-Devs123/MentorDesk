@@ -189,6 +189,23 @@ public class AgentGatewayController {
                             log.info("ℹ️ [Gateway] 错误由客户端中断引起 -> 正常关闭 SSE 连接, taskId: {}", taskId);
                             sink.complete();
                         } else {
+                            // 检查是否为RBAC拦截（RpcException且FORBIDDEN）
+                            if (throwable instanceof org.apache.dubbo.rpc.RpcException) {
+                                org.apache.dubbo.rpc.RpcException rpcEx = (org.apache.dubbo.rpc.RpcException) throwable;
+                                if (rpcEx.getCode() == org.apache.dubbo.rpc.RpcException.FORBIDDEN_EXCEPTION) {
+                                    // RBAC拦截，以友好的SSE消息返回
+                                    log.warn("🛑 [Gateway] RBAC拦截: {}", throwable.getMessage());
+                                    sink.next(Map.of(
+                                            "taskId", taskId,
+                                            "timestamp", System.currentTimeMillis(),
+                                            "stage", "RBAC_ACCESS_DENIED",
+                                            "content", "【RBAC访问拒绝】" + throwable.getMessage()
+                                    ));
+                                    sink.complete();
+                                    return;
+                                }
+                            }
+                            // 其他异常，使用原有处理
                             sink.error(throwable);
                         }
                     }

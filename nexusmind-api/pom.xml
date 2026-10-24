@@ -18,5 +18,11 @@
             <groupId>org.apache.dubbo</groupId>
             <artifactId>dubbo</artifactId>
         </dependency>
+        
+        <!-- 安全模块：提供RBAC注解 -->
+        <dependency>
+            <groupId>com.nexusmind</groupId>
+            <artifactId>nexusmind-security</artifactId>
+        </dependency>
     </dependencies>
 </project>

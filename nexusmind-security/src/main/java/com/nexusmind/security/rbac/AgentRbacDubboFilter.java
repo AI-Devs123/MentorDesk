@@ -48,9 +48,16 @@ public class AgentRbacDubboFilter implements Filter {
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
         
         try {
+            log.info("🔍 [RBAC-Filter] 拦截RPC调用: interface={}, method={}", 
+                invoker.getInterface().getSimpleName(), invocation.getMethodName());
+            
             // 1. 从 RPC 隐式参数中获取当前 Agent 标识
-            String currentAgentId = RpcContext.getClientAttachment()
+            // ⚠️ Provider端必须使用 getServerAttachment()
+            String currentAgentId = RpcContext.getServerAttachment()
                     .getAttachment(AGENT_ROLE_KEY);
+            
+            log.info("🔍 [RBAC-Filter] 从RpcContext提取Agent身份: {}", 
+                currentAgentId != null ? currentAgentId : "null");
             
             if (currentAgentId == null || currentAgentId.trim().isEmpty()) {
                 // 如果未设置 Agent 身份，允许继续（可能是非 Agent 调用）

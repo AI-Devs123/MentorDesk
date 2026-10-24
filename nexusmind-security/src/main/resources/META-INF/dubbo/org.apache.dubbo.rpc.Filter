@@ -1,0 +1,2 @@
+destructiveOperationDubboFilter=com.nexusmind.security.destructive.DestructiveOperationDubboFilter
+agentRbacDubboFilter=com.nexusmind.security.rbac.AgentRbacDubboFilter
