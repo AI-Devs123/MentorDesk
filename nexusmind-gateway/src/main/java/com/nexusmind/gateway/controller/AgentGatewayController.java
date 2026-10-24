@@ -43,6 +43,21 @@ public class AgentGatewayController {
 
         return Flux.<Map<String, Object>>create(sink -> {
             String taskId = "TASK-" + System.currentTimeMillis();
+            
+            // 🚨 前置安全网关检查：检测高危操作
+            SecurityCheckResult checkResult = performSecurityGatewayCheck(prompt);
+            if (!checkResult.isAllowed) {
+                log.warn("🛑 [Gateway] 安全网关拦截: {}", checkResult.reason);
+                sink.next(Map.of(
+                        "taskId", taskId,
+                        "timestamp", System.currentTimeMillis(),
+                        "stage", "SECURITY_GUARD_SCAN",
+                        "content", "【安全网关拦截】" + checkResult.reason
+                ));
+                sink.complete();
+                return;
+            }
+            
             AtomicBoolean isCancelled = new AtomicBoolean(false);
 
             // 注册该任务的中断标志位
@@ -173,5 +188,45 @@ public class AgentGatewayController {
      */
     public static void cleanupTask(String taskId) {
         TASK_CANCELLATION_FLAGS.remove(taskId);
+    }
+
+    /**
+     * 安全网关检查：前置拦截高危操作
+     */
+    private SecurityCheckResult performSecurityGatewayCheck(String prompt) {
+        if (prompt == null || prompt.isEmpty()) {
+            return new SecurityCheckResult(true, "");
+        }
+
+        String lowerPrompt = prompt.toLowerCase();
+        
+        // 高危操作关键词列表
+        String[] destructiveKeywords = {
+            "delete", "drop", "truncate", "rm ", "remove ", "destroy",
+            "kill ", "terminate", "unlink", "erase", "wipe"
+        };
+        
+        for (String keyword : destructiveKeywords) {
+            if (lowerPrompt.contains(keyword)) {
+                String reason = "检测到高危系统删除指令 [" + prompt + "]，操作已被安全策略阻断！";
+                log.warn("🛑 [Gateway-SecurityCheck] {}", reason);
+                return new SecurityCheckResult(false, reason);
+            }
+        }
+
+        return new SecurityCheckResult(true, "");
+    }
+
+    /**
+     * 安全检查结果
+     */
+    private static class SecurityCheckResult {
+        boolean isAllowed;
+        String reason;
+
+        SecurityCheckResult(boolean isAllowed, String reason) {
+            this.isAllowed = isAllowed;
+            this.reason = reason;
+        }
     }
 }
