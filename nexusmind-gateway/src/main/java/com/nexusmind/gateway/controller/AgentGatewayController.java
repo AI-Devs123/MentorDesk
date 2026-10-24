@@ -5,7 +5,9 @@ import com.nexusmind.agent.facade.AgentStreamResponse;
 import com.nexusmind.agent.facade.AgentStreamingFacade;
 import com.nexusmind.agent.facade.CancelTaskRequest;
 import com.nexusmind.agent.facade.CancelTaskResponse;
+import com.nexusmind.security.auth.JwtTokenProvider;
 import com.nexusmind.security.rbac.AgentRbacContext;
+import com.nexusmind.security.rbac.AgentRole;
 import org.apache.dubbo.common.stream.StreamObserver;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.slf4j.Logger;
@@ -15,6 +17,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -43,6 +46,10 @@ public class AgentGatewayController {
     @DubboReference
     private AgentStreamingFacade agentStreamingFacade;
     
+    // 注入 JWT Token 提供者
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
+    
     // 注入 Redis Template，用于第3层Token确认机制
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
@@ -55,17 +62,43 @@ public class AgentGatewayController {
 
     @GetMapping(value = "/api/v1/agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<Map<String, Object>> streamAgent(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam(name = "prompt", defaultValue = "默认任务") String prompt,
             @RequestParam(name = "agent", defaultValue = "Supervisor") String agent,
-            @RequestParam(name = "agentRole", defaultValue = "supervisor") String agentRole,
-            @RequestParam(name = "token", required = false) String authToken,              // 身份鉴权Token
+            @RequestParam(name = "agentRole", required = false) String agentRoleParam,  // 废弃，仅用于兼容
+            @RequestParam(name = "token", required = false) String authToken,              // 身份鉴权Token（废弃）
             @RequestParam(name = "confirmToken", required = false) String confirmToken) {  // 高危操作确认Token
 
         return Flux.<Map<String, Object>>create(sink -> {
             String taskId = "TASK-" + System.currentTimeMillis();
             
-            // 1. 提取用户ID（待第1层完成后从JWT中提取）
-            String userId = extractUserId(authToken);
+            // ✅ 第 1 步：从 Authorization header 中提取并解析 JWT Token
+            log.info("📥 [Gateway] 开始提取 JWT Token，authHeader 是否存在: {}", authHeader != null);
+            if (authHeader != null) {
+                log.info("📥 [Gateway] authHeader 内容: {}...", authHeader.substring(0, Math.min(50, authHeader.length())));
+            }
+            
+            String agentRole = extractAgentRoleFromJwt(authHeader);
+            if (agentRole == null) {
+                log.error("🛑 [Gateway] 无法从 JWT Token 中提取 Agent 角色");
+                sink.next(Map.of(
+                        "taskId", taskId,
+                        "timestamp", System.currentTimeMillis(),
+                        "stage", "AUTH_ERROR",
+                        "content", "【认证错误】无效的 JWT Token 或缺少 role 信息"
+                ));
+                sink.complete();
+                return;
+            }
+            
+            log.info("🔐 [Gateway] 从 JWT 中提取的 Agent 角色: {}", agentRole);
+            log.info("🔐 [Gateway] Agent 角色类型: {}, 是否为 null: {}, 是否为空字符串: {}", 
+                    agentRole != null ? agentRole.getClass().getSimpleName() : "null",
+                    agentRole == null,
+                    agentRole != null && agentRole.trim().isEmpty());
+            
+            // 1. 提取用户ID（从JWT中提取）
+            String userId = extractUserIdFromJwt(authHeader);
             
             // 2. 🚨【第2层防护】前置安全网关检查：拦截绝对禁止的高危黑名单操作
             SecurityCheckResult checkResult = performSecurityGatewayCheck(prompt);
@@ -125,13 +158,29 @@ public class AgentGatewayController {
             // 注册该任务的中断标志位
             TASK_CANCELLATION_FLAGS.put(taskId, isCancelled);
 
-            // 设置 Agent 身份到 RPC 上下文（RBAC 权限检查将使用此身份）
-            AgentRbacContext.setCurrentAgent(agentRole);
+            // 设置 Agent 身份到 RPC 上下文（从 JWT 中提取的真实 role）
+            try {
+                log.info("🔧 [Gateway] 尝试将 agentRole 设置到 RpcContext: {}", agentRole);
+                AgentRbacContext.setCurrentAgent(agentRole);
+                log.info("✅ [Gateway] AgentRole 已成功设置到 RpcContext");
+                
+                // 验证是否成功设置
+                String verifyRole = AgentRbacContext.getCurrentAgent();
+                log.info("✅ [Gateway] 验证: RpcContext 中当前 Agent: {}", verifyRole);
+            } catch (Exception e) {
+                log.error("❌ [Gateway] 设置 AgentRole 到 RpcContext 失败: {}", e.getMessage(), e);
+                sink.next(Map.of(
+                        "taskId", taskId,
+                        "timestamp", System.currentTimeMillis(),
+                        "stage", "RBAC_SETUP_ERROR",
+                        "content", "【RBAC设置错误】无法设置Agent角色到RPC上下文: " + e.getMessage()
+                ));
+                sink.complete();
+                return;
+            }
 
-            log.info(">>> [Gateway] 收到前端 SSE 握手请求, taskId: {}, prompt: {}, agent: {}, agentRole: {}, authToken: {}, confirmToken: {}",
-                    taskId, prompt, agent, agentRole, 
-                    authToken != null ? "****" : "null",
-                    confirmToken != null ? "****" : "null");
+            log.info(">>> [Gateway] 收到前端 SSE 握手请求, taskId: {}, prompt: {}, agent: {}, jwtRole: {}, userId: {}",
+                    taskId, prompt, agent, agentRole, userId);
             log.info("📡 [Gateway] 下游 Dubbo Triple 开始调用 Supervisor 流式服务");
 
             AgentStreamRequest request = AgentStreamRequest.newBuilder()
@@ -142,15 +191,6 @@ public class AgentGatewayController {
                     .build();
 
             try {
-                // authToken已通过query参数传递，Dubbo Filter会从Invocation中提取
-                // confirmToken通过AgentStreamRequest传递到后端
-                if (authToken != null && !authToken.isEmpty()) {
-                    log.info("🔑 [Gateway] 身份Token参数已接收");
-                }
-                if (confirmToken != null && !confirmToken.isEmpty()) {
-                    log.info("🎫 [Gateway] 确认Token参数已接收");
-                }
-                
                 // 发起 Dubbo Triple 流式调用
                 agentStreamingFacade.executeTaskStream(request, new StreamObserver<AgentStreamResponse>() {
                     @Override
@@ -391,70 +431,71 @@ public class AgentGatewayController {
     }
     
     /**
-     * 【第3层防护】验证Token并一次性消费
+     * 从 Authorization header 中提取 JWT Token 并解析出 Agent 角色
      * 
-     * @param userId 用户ID
-     * @param token 确认Token
-     * @param prompt 操作提示词
-     * @return 验证结果
+     * @param authHeader Authorization header 值（格式: Bearer <token>）
+     * @return Agent 角色（如 "supervisor"），如果解析失败返回 null
      */
-    private TokenValidationResult validateAndConsumeToken(String userId, String token, String prompt) {
-        if (redisTemplate == null) {
-            log.warn("⚠️ [Gateway-Layer3] Redis未注入，无法验证Token");
-            return new TokenValidationResult(false, "Redis未就绪，无法验证Token");
-        }
-        
-        if (token == null || token.isEmpty()) {
-            return new TokenValidationResult(false, "confirmToken参数为空");
-        }
-        
+    private String extractAgentRoleFromJwt(String authHeader) {
         try {
-            // 1. 构建Redis Key
-            String redisKey = REDIS_CONFIRM_KEY_PREFIX + userId + ":" + token;
-            
-            // 2. 从Redis获取存储的promptHash
-            String storedPromptHash = redisTemplate.opsForValue().get(redisKey);
-            
-            if (storedPromptHash == null) {
-                log.warn("⚠️ [Gateway-Layer3] Token不存在或已过期: userId={}, token={}", userId, token);
-                return new TokenValidationResult(false, 
-                    "confirmToken [" + token + "] 不存在、已过期或已被使用（有效期" + TOKEN_EXPIRY_MINUTES + "分钟）");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                log.warn("🔴 [Gateway] 缺少或无效的 Authorization header");
+                return null;
             }
             
-            // 3. 计算当前prompt的MD5并校验
-            String currentPromptHash = DigestUtils.md5DigestAsHex(prompt.getBytes(StandardCharsets.UTF_8));
+            String token = authHeader.substring(7);
+            log.debug("🔍 [Gateway] 提取的 Bearer token: {}...", token.substring(0, Math.min(50, token.length())));
             
-            if (!storedPromptHash.equals(currentPromptHash)) {
-                log.warn("⚠️ [Gateway-Layer3] Prompt不匹配: userId={}, token={}, stored={}, current={}", 
-                    userId, token, storedPromptHash, currentPromptHash);
-                return new TokenValidationResult(false, 
-                    "confirmToken与当前操作内容不匹配（Token是针对其他操作签发的）");
+            String role = jwtTokenProvider.getRoleFromToken(token);
+            
+            log.info("🔍 [Gateway] JWT getRoleFromToken() 返回: {}", role);
+            
+            if (role == null || role.trim().isEmpty()) {
+                log.warn("🔴 [Gateway] JWT Token 中缺少 role 字段或为空");
+                return null;
             }
             
-            // 4. 验证通过，原子删除Token（一次性消费，防止重放攻击）
-            Boolean deleted = redisTemplate.delete(redisKey);
+            log.info("✅ [Gateway] 成功从 JWT 中提取 role: '{}' (长度: {})", role, role.length());
             
-            if (Boolean.TRUE.equals(deleted)) {
-                log.info("✅ [Gateway-Layer3] Token验证通过并已消费: userId={}, token={}", userId, token);
-                return new TokenValidationResult(true, "Token验证通过");
-            } else {
-                log.warn("⚠️ [Gateway-Layer3] Token删除失败（可能已被消费）: userId={}, token={}", userId, token);
-                return new TokenValidationResult(false, "Token可能已被使用（一次性消费机制）");
+            // 验证 role 是否为有效的 AgentRole
+            AgentRole agentRole = AgentRole.fromId(role);
+            if (agentRole == null) {
+                log.warn("🔴 [Gateway] 无效的 Agent 角色值: '{}' (不能转换为 AgentRole)", role);
+                return null;
             }
             
+            log.info("✅ [Gateway] 角色值有效: {} -> AgentRole.{}", role, agentRole.name());
+            return role;
         } catch (Exception e) {
-            log.error("❌ [Gateway-Layer3] Token验证异常: {}", e.getMessage(), e);
-            return new TokenValidationResult(false, "Token验证异常: " + e.getMessage());
+            log.error("🔴 [Gateway] 从 JWT 中提取 role 失败: {}", e.getMessage(), e);
+            return null;
         }
     }
     
     /**
-     * 提取用户ID
-     * TODO: 第 1 层身份认证（JWT）完成后，升级为从 Token 中提取真实 userId
-     * 当前版本：临时实现（演示用），仅为测试环境使用
-     * 计划升级版本：2.0.0
+     * 从 Authorization header 中提取 JWT Token 并解析出用户名
      * 
-     * @deprecated 该临时实现不应在生产环境中使用
+     * @param authHeader Authorization header 值（格式: Bearer <token>）
+     * @return 用户名，如果解析失败返回 "USER-ANONYMOUS"
+     */
+    private String extractUserIdFromJwt(String authHeader) {
+        try {
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return "USER-ANONYMOUS";
+            }
+            
+            String token = authHeader.substring(7);
+            String username = jwtTokenProvider.getUsernameFromToken(token);
+            
+            return username != null && !username.trim().isEmpty() ? username : "USER-ANONYMOUS";
+        } catch (Exception e) {
+            log.debug("[Gateway] 从 JWT 中提取用户名失败: {}", e.getMessage());
+            return "USER-ANONYMOUS";
+        }
+    }
+    
+    /**
+     * @deprecated 已废弃，改为从 Authorization header 中提取 JWT Token
      */
     @Deprecated(since = "1.0.0")
     private String extractUserId(@RequestParam(name = "token", required = false) String authToken) {

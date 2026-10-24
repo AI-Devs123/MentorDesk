@@ -2,6 +2,7 @@ package com.nexusmind.supervisor.service;
 
 import com.nexusmind.security.destructive.TaskContextHolder;
 import com.nexusmind.security.destructive.TrashBackupService;
+import com.nexusmind.security.rbac.AgentSecured;
 import com.nexusmind.supervisor.execution.SnapshotRepository;
 import com.nexusmind.task.TaskExecutionService;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -35,6 +36,7 @@ public class TaskExecutionServiceImpl implements TaskExecutionService {
      * @return 操作结果（包含详细的验证信息）
      */
     @Override
+    @AgentSecured(allowedAgents = {"supervisor"})
     public Map<String, Object> resumeTask(String executionId, String token) {
         log.info("📥 收到任务恢复请求: executionId={}, token={}", executionId, token);
 
@@ -97,6 +99,7 @@ public class TaskExecutionServiceImpl implements TaskExecutionService {
      * @return 操作结果
      */
     @Override
+    @AgentSecured(allowedAgents = {"supervisor"})
     public Map<String, Object> abortTask(String executionId) {
         log.warn("🛑 [Supervisor] 收到任务中止拒绝请求, executionId: {}", executionId);
 

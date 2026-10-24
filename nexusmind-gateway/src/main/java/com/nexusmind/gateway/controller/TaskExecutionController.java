@@ -1,5 +1,6 @@
 package com.nexusmind.gateway.controller;
 
+import com.nexusmind.security.rbac.AgentRbacContext;
 import com.nexusmind.task.TaskExecutionService;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.redisson.api.RLock;
@@ -74,43 +75,51 @@ public class TaskExecutionController {
             return ResponseEntity.badRequest().body(errorResult);
         }
 
-        // 【切片 5】分布式锁防连击：同一 execution_id 禁止并发重复提交
-        if (redissonClient != null) {
-            String lockKey = LOCK_KEY_PREFIX + executionId;
-            RLock lock = redissonClient.getLock(lockKey);
-            try {
-                // 尝试获取锁，2 秒超时，锁定 5 秒后自动释放
-                boolean acquired = lock.tryLock(2, 5, TimeUnit.SECONDS);
-                if (!acquired) {
-                    log.warn("⚠️ [Gateway] 检测到重复快速点击，拒绝处理: executionId={}", executionId);
-                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of(
+        // 设置 Agent 身份到 RPC 上下文（RBAC 权限检查将使用此身份）
+        AgentRbacContext.setCurrentAgent("supervisor");
+
+        try {
+            // 【切片 5】分布式锁防连击：同一 execution_id 禁止并发重复提交
+            if (redissonClient != null) {
+                String lockKey = LOCK_KEY_PREFIX + executionId;
+                RLock lock = redissonClient.getLock(lockKey);
+                try {
+                    // 尝试获取锁，2 秒超时，锁定 5 秒后自动释放
+                    boolean acquired = lock.tryLock(2, 5, TimeUnit.SECONDS);
+                    if (!acquired) {
+                        log.warn("⚠️ [Gateway] 检测到重复快速点击，拒绝处理: executionId={}", executionId);
+                        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of(
+                            "status", "ERROR",
+                            "code", "DUPLICATE_REQUEST",
+                            "message", "正在处理中，请勿重复快速提交！"
+                        ));
+                    }
+
+                    try {
+                        return resumeTaskInternal(executionId, token, promptHash);
+                    } finally {
+                        if (lock.isHeldByCurrentThread()) {
+                            lock.unlock();
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("❌ [Gateway] 分布式锁获取中断: {}", e.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                         "status", "ERROR",
-                        "code", "DUPLICATE_REQUEST",
-                        "message", "正在处理中，请勿重复快速提交！"
+                        "code", "LOCK_ERROR",
+                        "message", "处理中断"
                     ));
                 }
-
-                try {
-                    return resumeTaskInternal(executionId, token, promptHash);
-                } finally {
-                    if (lock.isHeldByCurrentThread()) {
-                        lock.unlock();
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("❌ [Gateway] 分布式锁获取中断: {}", e.getMessage());
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "status", "ERROR",
-                    "code", "LOCK_ERROR",
-                    "message", "处理中断"
-                ));
+            } else {
+                // 降级处理：Redisson 未配置时，直接处理而不进行分布式锁防护
+                // 这种情况下无法防止并发重复提交，仅用于开发/测试环境
+                log.warn("⚠️ [Gateway] Redisson 未配置，分布式锁防连击功能不可用");
+                return resumeTaskInternal(executionId, token, promptHash);
             }
-        } else {
-            // 降级处理：Redisson 未配置时，直接处理而不进行分布式锁防护
-            // 这种情况下无法防止并发重复提交，仅用于开发/测试环境
-            log.warn("⚠️ [Gateway] Redisson 未配置，分布式锁防连击功能不可用");
-            return resumeTaskInternal(executionId, token, promptHash);
+        } finally {
+            // 清理 RBAC 上下文
+            AgentRbacContext.clearContext();
         }
     }
 
@@ -230,39 +239,47 @@ public class TaskExecutionController {
             return ResponseEntity.badRequest().body(errorResult);
         }
 
-        // 【切片 5】分布式锁防连击：防止前端快速连续点击"拒绝"按钮导致重复中止
-        if (redissonClient != null) {
-            String lockKey = LOCK_KEY_PREFIX + "abort:" + executionId;
-            RLock lock = redissonClient.getLock(lockKey);
-            try {
-                boolean acquired = lock.tryLock(2, 5, TimeUnit.SECONDS);
-                if (!acquired) {
-                    log.warn("⚠️ [Gateway] 检测到重复快速点击拒绝，拒绝处理: executionId={}", executionId);
-                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of(
+        // 设置 Agent 身份到 RPC 上下文（RBAC 权限检查将使用此身份）
+        AgentRbacContext.setCurrentAgent("supervisor");
+
+        try {
+            // 【切片 5】分布式锁防连击：防止前端快速连续点击"拒绝"按钮导致重复中止
+            if (redissonClient != null) {
+                String lockKey = LOCK_KEY_PREFIX + "abort:" + executionId;
+                RLock lock = redissonClient.getLock(lockKey);
+                try {
+                    boolean acquired = lock.tryLock(2, 5, TimeUnit.SECONDS);
+                    if (!acquired) {
+                        log.warn("⚠️ [Gateway] 检测到重复快速点击拒绝，拒绝处理: executionId={}", executionId);
+                        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of(
+                            "status", "ERROR",
+                            "code", "DUPLICATE_ABORT",
+                            "message", "正在处理拒绝请求，请勿重复点击！"
+                        ));
+                    }
+
+                    try {
+                        return abortTaskInternal(executionId);
+                    } finally {
+                        if (lock.isHeldByCurrentThread()) {
+                            lock.unlock();
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("❌ [Gateway] 分布式锁获取中断: {}", e.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                         "status", "ERROR",
-                        "code", "DUPLICATE_ABORT",
-                        "message", "正在处理拒绝请求，请勿重复点击！"
+                        "code", "LOCK_ERROR",
+                        "message", "处理中断"
                     ));
                 }
-
-                try {
-                    return abortTaskInternal(executionId);
-                } finally {
-                    if (lock.isHeldByCurrentThread()) {
-                        lock.unlock();
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("❌ [Gateway] 分布式锁获取中断: {}", e.getMessage());
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "status", "ERROR",
-                    "code", "LOCK_ERROR",
-                    "message", "处理中断"
-                ));
+            } else {
+                return abortTaskInternal(executionId);
             }
-        } else {
-            return abortTaskInternal(executionId);
+        } finally {
+            // 清理 RBAC 上下文
+            AgentRbacContext.clearContext();
         }
     }
 

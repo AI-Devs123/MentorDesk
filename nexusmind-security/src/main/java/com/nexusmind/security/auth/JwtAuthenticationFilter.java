@@ -1,5 +1,6 @@
 package com.nexusmind.security.auth;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -8,6 +9,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -67,11 +71,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
 
             String token = authHeader.substring(7);
-            jwtTokenProvider.validateAndParseToken(token);
+            Claims claims = jwtTokenProvider.validateAndParseToken(token);
             logger.debug("Token validated successfully");
 
-            // Token 验证成功，继续处理请求
-            filterChain.doFilter(request, response);
+            // 将身份写入 SecurityContext，供 Spring Security 授权层（anyRequest().authenticated()）放行
+            String role = claims.get("role", String.class);
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(
+                            claims.getSubject(),
+                            token,
+                            role != null ? List.of(new SimpleGrantedAuthority("ROLE_" + role)) : List.of());
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            // Token 验证成功，继续处理请求（STATELESS 会话，结束后清理上下文防线程污染）
+            try {
+                filterChain.doFilter(request, response);
+            } finally {
+                SecurityContextHolder.clearContext();
+            }
 
         } catch (JwtException e) {
             logger.warn("Token validation failed: {}", e.getMessage());
