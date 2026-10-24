@@ -1,22 +1,48 @@
 package com.nexusmind.security.destructive;
 
-import java.lang.annotation.*;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
- * 标记破坏性操作（删除、修改敏感配置等）
- * 被此注解标记的方法在执行时需要用户Token确认
+ * 破坏性操作注解
+ * 标记需要人工二阶段确认的方法
+ * 
+ * 使用示例：
+ * <pre>
+ * {@code
+ * @DestructiveOperation(
+ *     type = DestructiveOperationType.FILE_DELETE,
+ *     riskLevel = RiskLevel.HIGH,
+ *     description = "删除用户上传的文件"
+ * )
+ * public void deleteUserFile(String filePath) {
+ *     // 实际删除逻辑
+ * }
+ * }
+ * </pre>
  */
-@Target({ElementType.METHOD, ElementType.TYPE})
+@Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-@Documented
 public @interface DestructiveOperation {
     /**
-     * 操作描述（用于日志和用户提示）
+     * 操作类型
      */
-    String value() default "破坏性操作";
+    DestructiveOperationType type();
     
     /**
-     * 是否需要Token确认（默认true）
+     * 风险等级，默认为 HIGH
      */
-    boolean requireConfirmation() default true;
+    RiskLevel riskLevel() default RiskLevel.HIGH;
+    
+    /**
+     * 操作描述，用于前端展示
+     */
+    String description() default "";
+    
+    /**
+     * 是否需要生成 Diff 预览（仅对文件操作有效）
+     */
+    boolean requiresDiff() default true;
 }

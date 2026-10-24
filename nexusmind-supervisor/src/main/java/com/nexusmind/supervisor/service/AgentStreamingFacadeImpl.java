@@ -1,19 +1,25 @@
 package com.nexusmind.supervisor.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexusmind.agent.facade.AgentStreamRequest;
 import com.nexusmind.agent.facade.AgentStreamResponse;
 import com.nexusmind.agent.facade.CancelTaskRequest;
 import com.nexusmind.agent.facade.CancelTaskResponse;
 import com.nexusmind.agent.facade.DubboAgentStreamingFacadeTriple;
 import com.nexusmind.security.destructive.DestructiveOperation;
+import com.nexusmind.security.destructive.ExecutionSnapshot;
+import com.nexusmind.security.destructive.ExecutionSuspendedException;
 import com.nexusmind.security.rbac.AgentSecured;
 import com.nexusmind.security.rbac.AgentRole;
+import com.nexusmind.supervisor.execution.SnapshotRepository;
 import org.apache.dubbo.common.stream.StreamObserver;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.apache.dubbo.rpc.RpcContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,8 +38,15 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
 
     // 运行中任务的执行线程注册表：taskId -> Thread（收到 RST_STREAM 后用于立即中断线程）
     private static final Map<String, Thread> RUNNING_THREADS = new ConcurrentHashMap<>();
+    
+    @Autowired
+    private SnapshotRepository snapshotRepository;
+    
+    @Autowired
+    private DemoDestructiveService demoDestructiveService;
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @DestructiveOperation(value = "Agent任务流式执行", requireConfirmation = true)
     @AgentSecured(allowedAgents = {"supervisor"})
     @Override
     public void executeTaskStream(AgentStreamRequest request, StreamObserver<AgentStreamResponse> responseObserver) {
@@ -52,6 +65,32 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
             // 注册执行线程，供 cancelTask 收到 RST_STREAM 时立即中断
             RUNNING_THREADS.put(taskId, Thread.currentThread());
             try {
+                // 🔥 检测是否为破坏性操作触发测试（演示 AOP 拦截）
+                // 使用特殊触发词 "cleanup old_file" 避免被 Gateway 第3层拦截
+                log.info(">>> [Supervisor] 收到 Prompt: {}", prompt);
+                log.info(">>> [Supervisor] demoDestructiveService 注入状态: {}", 
+                    demoDestructiveService != null ? "已注入" : "未注入(NULL)");
+                
+                if (prompt != null && (prompt.toLowerCase().contains("delete old_file.py") 
+                    || prompt.toLowerCase().contains("cleanup old_file"))) {
+                    log.warn("🛑 [Supervisor] 检测到破坏性操作测试: {}", prompt);
+                    
+                if (demoDestructiveService != null) {
+                        log.warn("🛑 [Supervisor] 准备调用 demoDestructiveService.deleteOldFile()");
+                        try {
+                            // 触发破坏性操作，会被 AOP 拦截
+                            demoDestructiveService.deleteOldFile("old_file.py");
+                            log.warn("🛑 [Supervisor] deleteOldFile() 调用完成（不应该执行到这里）");
+                        } catch (ExecutionSuspendedException suspendEx) {
+                            // AOP 拦截成功
+                            log.warn("✅ [Supervisor] AOP 成功拦截，捕获到 ExecutionSuspendedException");
+                            throw suspendEx;
+                        }
+                    } else {
+                        log.error("❌ [Supervisor] demoDestructiveService 未注入，无法测试 AOP");
+                    }
+                }
+                
                 // 定义 5 个阶段的任务流程
                 List<String[]> stages = List.of(
                         new String[]{"SECURITY_GUARD_SCAN", "【安全网关】执行 RAG 安全防护检测，拦截敏感信息..."},
@@ -109,17 +148,117 @@ public class AgentStreamingFacadeImpl extends DubboAgentStreamingFacadeTriple.Ag
                 responseObserver.onCompleted();
                 log.info("✅ [Supervisor] 任务全流程推流完毕，TaskId: {}", taskId);
 
-            } catch (InterruptedException e) {
-                log.warn("🛑 [Supervisor] 虚拟线程被中断异常: {}", e.getMessage());
-                log.warn("    TaskId: {}", taskId);
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                log.error("❌ [Supervisor] 推流异常: {} ({})", e.getMessage(), e.getClass().getSimpleName());
-                log.error("    TaskId: {}", taskId);
+            } catch (ExecutionSuspendedException suspendEx) {
+                // 🚨 捕获破坏性操作挂起异常
+                log.warn("⏸️ [Supervisor] 执行已挂起，等待用户确认: taskId={}", taskId);
+                
+                ExecutionSnapshot snapshot = suspendEx.getSnapshot();
+                
+                // 1. 保存快照到 Redis
+                if (snapshotRepository != null) {
+                    boolean saved = snapshotRepository.saveSnapshot(taskId, snapshot);
+                    if (saved) {
+                        log.info("✅ [Supervisor] 快照已保存到 Redis: taskId={}", taskId);
+                    } else {
+                        log.error("❌ [Supervisor] 快照保存失败: taskId={}", taskId);
+                    }
+                } else {
+                    log.warn("⚠️ [Supervisor] SnapshotRepository 未注入，跳过快照保存");
+                }
+                
+                // 2. 推送 SUSPEND_FOR_CONFIRMATION 事件到前端
                 try {
-                    responseObserver.onError(e);
-                } catch (Exception ex) {
-                    log.error("⚠️ [Supervisor] 向客户端发送错误异常帧失败: {}", ex.getMessage());
+                    Map<String, Object> suspendData = new HashMap<>();
+                    suspendData.put("execution_id", taskId);
+                    suspendData.put("token", snapshot.getConfirmationToken());
+                    suspendData.put("operation_type", snapshot.getOperationType().name());
+                    suspendData.put("risk_level", snapshot.getRiskLevel().name());
+                    suspendData.put("description", snapshot.getOperationDescription());
+                    suspendData.put("change_preview", snapshot.getChangePreview());
+                    suspendData.put("expires_at", snapshot.getExpiresAt().toString());
+                    
+                    String dataJson = objectMapper.writeValueAsString(suspendData);
+                    
+                    AgentStreamResponse suspendFrame = AgentStreamResponse.newBuilder()
+                            .setTaskId(taskId)
+                            .setTimestamp(System.currentTimeMillis())
+                            .setStage("SUSPEND_FOR_CONFIRMATION")
+                            .setDeltaChunk(dataJson)
+                            .build();
+                    
+                    responseObserver.onNext(suspendFrame);
+                    log.info("📤 [Supervisor] 已推送挂起通知到前端");
+                    
+                    // 3. 平稳关闭流（等待前端通过 /api/v1/task/resume 恢复）
+                    responseObserver.onCompleted();
+                    log.info("🏁 [Supervisor] SSE 流已平稳关闭，等待用户裁决");
+                    
+                } catch (Exception jsonEx) {
+                    log.error("❌ [Supervisor] 推送挂起通知失败: {}", jsonEx.getMessage(), jsonEx);
+                    responseObserver.onError(jsonEx);
+                }
+                
+            } catch (Throwable t) {
+                // 🔥 处理异常包装：Spring AOP 或反射可能将异常包装为 UndeclaredThrowableException
+                log.warn("⚠️ [Supervisor] 捕获异常: {} ({})", t.getMessage(), t.getClass().getSimpleName());
+                
+                // 提取真实异常，防范 Spring AOP / 反射包装
+                Throwable actual = t;
+                int depth = 0;
+                while (actual != null && !(actual instanceof ExecutionSuspendedException) && depth < 5) {
+                    log.debug("    第 {} 层异常: {} - {}", depth, actual.getClass().getSimpleName(), actual.getMessage());
+                    actual = actual.getCause();
+                    depth++;
+                }
+                
+                // 检查是否最终提取出了 ExecutionSuspendedException
+                if (actual instanceof ExecutionSuspendedException suspendEx) {
+                    log.warn("✅ [Supervisor] 成功从异常链中提取出 ExecutionSuspendedException，重新处理");
+                    
+                    ExecutionSnapshot snapshot = suspendEx.getSnapshot();
+                    
+                    // 1. 保存快照到 Redis
+                    if (snapshotRepository != null) {
+                        boolean saved = snapshotRepository.saveSnapshot(taskId, snapshot);
+                        if (saved) {
+                            log.info("✅ [Supervisor] 快照已保存到 Redis: taskId={}", taskId);
+                        }
+                    }
+                    
+                    // 2. 推送 SUSPEND_FOR_CONFIRMATION 事件到前端
+                    try {
+                        Map<String, Object> suspendData = new HashMap<>();
+                        suspendData.put("execution_id", taskId);
+                        suspendData.put("token", snapshot.getConfirmationToken());
+                        suspendData.put("operation_type", snapshot.getOperationType().name());
+                        suspendData.put("risk_level", snapshot.getRiskLevel().name());
+                        suspendData.put("description", snapshot.getOperationDescription());
+                        suspendData.put("change_preview", snapshot.getChangePreview());
+                        suspendData.put("expires_at", snapshot.getExpiresAt().toString());
+                        
+                        String dataJson = objectMapper.writeValueAsString(suspendData);
+                        
+                        AgentStreamResponse suspendFrame = AgentStreamResponse.newBuilder()
+                                .setTaskId(taskId)
+                                .setTimestamp(System.currentTimeMillis())
+                                .setStage("SUSPEND_FOR_CONFIRMATION")
+                                .setDeltaChunk(dataJson)
+                                .build();
+                        
+                        responseObserver.onNext(suspendFrame);
+                        log.info("📤 [Supervisor] 已推送挂起通知到前端");
+                        responseObserver.onCompleted();
+                        log.info("🏁 [Supervisor] SSE 流已平稳关闭，等待用户裁决");
+                    } catch (Exception jsonEx) {
+                        log.error("❌ [Supervisor] 推送挂起通知失败: {}", jsonEx.getMessage(), jsonEx);
+                        responseObserver.onError(jsonEx);
+                    }
+                } else if (t instanceof InterruptedException) {
+                    log.warn("🛑 [Supervisor] 虚拟线程被中断异常: {}", t.getMessage());
+                    Thread.currentThread().interrupt();
+                } else {
+                    log.error("❌ [Supervisor] 推流异常: {} ({})", t.getMessage(), t.getClass().getSimpleName());
+                    responseObserver.onError(t);
                 }
             } finally {
                 // 清理该任务的中断标志位与线程注册

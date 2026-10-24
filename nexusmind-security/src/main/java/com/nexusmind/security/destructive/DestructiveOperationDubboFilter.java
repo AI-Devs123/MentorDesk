@@ -49,7 +49,7 @@ public class DestructiveOperationDubboFilter implements Filter {
             if (method != null && method.isAnnotationPresent(DestructiveOperation.class)) {
                 DestructiveOperation annotation = method.getAnnotation(DestructiveOperation.class);
                 isDestructive = true;
-                operationDesc = annotation.value();
+                operationDesc = annotation.description();
                 log.warn("🚨 [DestructiveOperationDubboFilter] 拦截破坏性操作: {} - {}", 
                     methodName, operationDesc);
             }
@@ -65,7 +65,7 @@ public class DestructiveOperationDubboFilter implements Filter {
                         if (method != null && method.isAnnotationPresent(DestructiveOperation.class)) {
                             DestructiveOperation annotation = method.getAnnotation(DestructiveOperation.class);
                             isDestructive = true;
-                            operationDesc = annotation.value();
+                            operationDesc = annotation.description();
                             log.warn("🚨 [DestructiveOperationDubboFilter] 拦截破坏性操作(从实现类): {} - {}", 
                                 methodName, operationDesc);
                         }
