@@ -196,10 +196,15 @@ public class DestructiveOperationDubboFilter implements Filter {
     }
     
     /**
-     * 根据接口加载实现类（简化版，实际应用需改进）
+     * 根据接口加载实现类
+     * TODO: 升级版本中，从 Spring Context 获取实现 Bean（使用 ApplicationContext.getBean）
+     * 计划版本：2.0.0
+     * 
+     * @deprecated 当前为简化版本，仅返回接口类，不具有实际加载实现类的功能
      */
+    @Deprecated(since = "1.0.0")
     private Class<?> loadImplementationClass(Class<?> interfaceClass) {
-        // TODO: 实际应从Spring Context获取实现Bean
+        log.debug("⚠️ 未实现的方法：loadImplementationClass，返回接口类本身");
         return interfaceClass;
     }
 }

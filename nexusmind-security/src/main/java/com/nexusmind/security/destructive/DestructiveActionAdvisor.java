@@ -44,12 +44,7 @@ public class DestructiveActionAdvisor {
             return joinPoint.proceed();
         }
 
-        // 备用机制：从方法参数中提取确认令牌（兼容旧逻辑）
-        String confirmationToken = extractConfirmationToken(joinPoint);
-        if (confirmationToken != null) {
-            log.info("检测到确认令牌，允许执行破坏性操作: {}", method.getName());
-            return joinPoint.proceed();
-        }
+
 
         // 首次触发：生成快照并抛出挂起异常
         log.warn("⚠️ [DestructiveActionAdvisor] 拦截破坏性操作: {} - 类型: {}, 风险等级: {}", 
@@ -98,7 +93,8 @@ public class DestructiveActionAdvisor {
         // 生成一次性确认令牌
         snapshot.setConfirmationToken(UUID.randomUUID().toString());
         
-        // 设置上下文变量（简化版，实际应从 DAG 上下文获取）
+        // TODO: 实现从 DAG 上下文提取上下文变量的完整版本
+        // 当前为简化实现，仅设置空容器
         snapshot.setContextVariables(new HashMap<>());
 
         return snapshot;
@@ -106,7 +102,12 @@ public class DestructiveActionAdvisor {
 
     /**
      * 生成变更预览（简化实现）
+     * TODO: 升级为完整的 Diff 生成逻辑，支持标准 unified diff 格式
+     * 计划版本：2.0.0
+     * 
+     * @deprecated 当前为简化版，仅提供基本字符串拼接，不支持真实 Diff 对比
      */
+    @Deprecated(since = "1.0.0")
     private String generateChangePreview(DestructiveOperationType type, Map<String, Object> args) {
         return switch (type) {
             case FILE_DELETE -> "将删除文件: " + args.getOrDefault("filePath", "unknown");
@@ -117,8 +118,10 @@ public class DestructiveActionAdvisor {
     }
 
     /**
-     * 从方法参数中提取确认令牌（恢复场景）
+     * 从方法参数中提取确认令牌（已弃用）
+     * @deprecated 使用 TaskContextHolder 中的恢复令牌替代，该方法将在下个大版本移除
      */
+    @Deprecated(since = "1.0.0", forRemoval = true)
     private String extractConfirmationToken(ProceedingJoinPoint joinPoint) {
         Object[] args = joinPoint.getArgs();
         for (Object arg : args) {

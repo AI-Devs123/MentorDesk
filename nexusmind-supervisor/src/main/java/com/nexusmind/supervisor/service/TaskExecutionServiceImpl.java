@@ -1,6 +1,7 @@
 package com.nexusmind.supervisor.service;
 
 import com.nexusmind.security.destructive.TaskContextHolder;
+import com.nexusmind.security.destructive.TrashBackupService;
 import com.nexusmind.supervisor.execution.SnapshotRepository;
 import com.nexusmind.task.TaskExecutionService;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,6 +23,9 @@ public class TaskExecutionServiceImpl implements TaskExecutionService {
 
     @Autowired
     private SnapshotRepository snapshotRepository;
+
+    @Autowired(required = false)
+    private TrashBackupService trashBackupService;
 
     /**
      * 恢复任务并执行破坏性操作

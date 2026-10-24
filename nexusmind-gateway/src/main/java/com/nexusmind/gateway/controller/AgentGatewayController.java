@@ -449,11 +449,22 @@ public class AgentGatewayController {
     }
     
     /**
-     * 提取用户ID（临时实现，待第1层鉴权完成后从Token中提取）
+     * 提取用户ID
+     * TODO: 第 1 层身份认证（JWT）完成后，升级为从 Token 中提取真实 userId
+     * 当前版本：临时实现（演示用），仅为测试环境使用
+     * 计划升级版本：2.0.0
+     * 
+     * @deprecated 该临时实现不应在生产环境中使用
      */
+    @Deprecated(since = "1.0.0")
     private String extractUserId(@RequestParam(name = "token", required = false) String authToken) {
-        // TODO: 第1层身份认证完成后，从JWT Token中提取真实userId
-        // 当前使用临时默认值
+        // ⚠️ 演示用临时实现
+        // 生产环境应：
+        // 1. 从 Authorization header 中获取 JWT Token
+        // 2. 验证 JWT 签名
+        // 3. 从 Token 的 claims 中提取 userId
+        // 4. 验证 userId 的权限范围
+        
         if (authToken != null && !authToken.isEmpty()) {
             return "USER-DEV-" + Math.abs(authToken.hashCode() % 10000);
         }

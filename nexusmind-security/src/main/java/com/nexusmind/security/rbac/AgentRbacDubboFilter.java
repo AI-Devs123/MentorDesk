@@ -58,8 +58,9 @@ public class AgentRbacDubboFilter implements Filter {
             log.debug("🔍 [RBAC-Filter] 尝试从 ServerAttachment 提取 Agent 身份: {}", 
                 currentAgentId != null ? currentAgentId : "null");
             
-            // 2. 如果 ServerAttachment 中没有，尝试 ClientAttachment（备用方式）
-            // 这是解决 Dubbo Triple gRPC attachment 传递问题的备用通道
+            // 备用通道：如果 ServerAttachment 中没有，尝试 ClientAttachment
+            // 这是解决 Dubbo Triple gRPC attachment 传递不稳定的必要手段
+            // 在正常流程中应该优先使用 ServerAttachment
             if (currentAgentId == null || currentAgentId.trim().isEmpty()) {
                 currentAgentId = RpcContext.getClientAttachment()
                         .getAttachment(AGENT_ROLE_KEY);
