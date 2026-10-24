@@ -13,6 +13,7 @@ message AgentStreamRequest {
   string agent_name = 3;
   string payload = 4;
   map<string, string> metadata = 5;
+  string confirmation_token = 6;  // 破坏性操作确认Token
 }
 
 // 流式下发的执行帧
