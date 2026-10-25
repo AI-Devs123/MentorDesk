@@ -19,10 +19,60 @@
             <artifactId>dubbo</artifactId>
         </dependency>
         
+        <!-- Protocol Buffers 支持 -->
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${protobuf.version}</version>
+        </dependency>
+        
         <!-- 安全模块：提供RBAC注解 -->
         <dependency>
             <groupId>com.nexusmind</groupId>
             <artifactId>nexusmind-security</artifactId>
         </dependency>
+
+        <!-- JUnit 5 测试框架 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Protobuf 编译插件：将 .proto 文件编译为 Java 类 -->
+            <plugin>
+                <groupId>org.xolstice.maven.plugins</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <version>0.6.1</version>
+                <configuration>
+                    <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+                    <!-- 只编译 cognitive_contract.proto，避免与手写类冲突 -->
+                    <protoSourceRoot>src/main/proto</protoSourceRoot>
+                    <includes>
+                        <include>cognitive_contract.proto</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>test-compile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+        
+        <extensions>
+            <!-- OS 检测插件（用于跨平台 Protobuf 编译） -->
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+            </extension>
+        </extensions>
+    </build>
 </project>

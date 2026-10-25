@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package com.nexusmind.rpc.cognitive;
+
+option java_multiple_files = true;
+option java_package = "com.nexusmind.rpc.cognitive";
+option java_outer_classname = "CognitiveContractProto";
+
+// =============================================================================
+// 1. 日记三段式抽取实体与元数据
+// =============================================================================
+
+/**
+ * 日记条目 Protobuf：承载原始文本与结构化三段式提取
+ * 兼容 Dubbo 3 Triple 协议，支持 gRPC 流式传输
+ */
+message JournalEntryProto {
+    string entry_id = 1;                  // 唯一标识 (UUID 或 YYYY-MM-DD-seq)
+    string raw_content = 2;               // 原始 Markdown 文本
+    string record_date = 3;               // 业务日期 (ISO-8601: YYYY-MM-DD)
+    repeated string tags = 4;             // 领域标签 (如: ["Spring Boot", "RAG", "Dubbo"])
+    StructuredExtraction extraction = 5;  // 三段式强制抽取实体
+    int64 created_at = 6;                 // 时间戳 (Epoch Millis)
+}
+
+/**
+ * 结构化三段式提取
+ */
+message StructuredExtraction {
+    repeated string breakthroughs = 1;   // 【今日突破】核心技术与认知进展
+    repeated BlockerItem blockers = 2;   // 【阻碍与因果归因】技术阻碍及归因分析
+    repeated string mvp_actions = 3;     // 【次日 MVP 行动清单】高可执行动作
+}
+
+/**
+ * 阻碍项：现象、根因、技术域
+ */
+message BlockerItem {
+    string symptom = 1;                  // 阻碍现象/表征
+    string root_cause = 2;               // 根因分析
+    string technical_domain = 3;         // 关联技术域 (如: "Memory/GC", "Network/HTTP2")
+}
+
+// =============================================================================
+// 2. 习惯偏置与认知画像状态
+// =============================================================================
+
+/**
+ * 个人认知画像 Protobuf
+ * 存储认知偏置、薄弱点评分、注意力周期等信息
+ */
+message PersonaProfileProto {
+    string profile_id = 1;               // 画像唯一标识
+    int64 updated_at = 2;                // 最近更新时间
+    repeated CognitiveBias biases = 3;   // 认知偏置观察项
+    map<string, double> blind_spots = 4; // 认知薄弱点/盲区评分 (Domain -> 0.0~1.0)
+    repeated string attention_tags = 5;  // 注意力周期标签 (如: "High-Energy: Morning")
+    int32 total_reflective_days = 6;     // 累计复盘天数
+}
+
+/**
+ * 认知偏置项
+ */
+message CognitiveBias {
+    string bias_name = 1;                // 偏置类型 (如: "乐观时间预估", "局部优化偏执")
+    string manifestation = 2;            // 具体表现证据
+    int32 frequency = 3;                 // 历史累计命中频次
+    string confidence_level = 4;         // 置信度: LOW, MEDIUM, HIGH
+}
+
+// =============================================================================
+// 3. 苏格拉底式启发提问与关联槽位
+// =============================================================================
+
+/**
+ * 苏格拉底式启发提问提示词 Protobuf
+ * TutorAgent 用于生成启发式问题链的数据结构
+ */
+message TutorReflectionPromptProto {
+    string prompt_id = 1;                           // 提示词唯一标识
+    string target_domain = 2;                       // 针对的技术域
+    string context_summary = 3;                     // 阻碍背景摘要 (源自 JournalAgent)
+    string core_conflict = 4;                       // 底层架构冲突/本质矛盾阐述
+    repeated ReflectionQuestion questions = 5;     // 辨析性思考题
+    repeated KnowledgeLink knowledge_links = 6;    // 历史新旧知识关联线索槽位
+}
+
+/**
+ * 反思问题：对比两个概念的辨析题
+ */
+message ReflectionQuestion {
+    int32 index = 1;                    // 问题序号
+    string concept_a = 2;               // 对比概念 A
+    string concept_b = 3;               // 对比概念 B
+    string question_text = 4;           // 辨析式问题正文
+}
+
+/**
+ * 知识关联链接
+ */
+message KnowledgeLink {
+    string historical_entry_id = 1;     // 关联的历史日记/知识库文档 ID
+    string relation_type = 2;           // 关系类型 (如: "EVOLUTION_OF", "CONFLICT_WITH")
+    string insight = 3;                 // 关联洞察说明
+}
