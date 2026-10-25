@@ -15,6 +15,13 @@ dubbo:
     name: tri
     port: 50052
 
+# LLM 配置（读取方为本模块的 com.nexusmind.agent.llm.LLMClient，@Value 注入）
+# 注意：api-key 为 sk-test 或空时 LLMClient 自动降级为 Mock 响应，不发起真实网络调用
+llm:
+  api-key: ${LLM_API_KEY:sk-test}
+  model: gpt-4o-mini
+  timeout-seconds: 5
+
 logging:
   level:
     root: INFO

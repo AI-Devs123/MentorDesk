@@ -28,9 +28,12 @@ dubbo:
   consumer:
     timeout: 120000
     check: false
+  # gateway 虽为纯 consumer，Dubbo 3 启动时仍会导出内建元数据服务并绑定协议端口。
+  # 三服务端口各有专职，避免互撞（此前 port:-1 回退默认 50051，与 supervisor 冲突）：
+  #   supervisor 50051 / agent-workers 50052 / gateway 50053
   protocol:
     name: tri
-    port: -1  # 消费者不需要协议端口
+    port: 50053
 
 logging:
   level:

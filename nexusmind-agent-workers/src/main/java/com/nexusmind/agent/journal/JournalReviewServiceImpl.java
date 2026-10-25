@@ -8,6 +8,8 @@ import com.nexusmind.api.dto.DataPayload;
 import com.nexusmind.api.dto.JournalEntryDTO;
 import com.nexusmind.api.dto.JournalEntryDTO.StructuredExtraction;
 import com.nexusmind.api.dto.ProcessingStats;
+import com.nexusmind.api.service.IJournalReviewService;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,16 +23,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 日记审查服务实现 (agent-workers 层 - 核心能力库)
- * 
+ *
  * 职责:
  * 1. 调度 LLM 进行三要素提取 (支持 Mock 降级)
  * 2. 调用文件写通道进行 Append-only 落盘
  * 3. 解析 LLM 响应
  * 4. 组装 DataPayload 响应
- * 
+ *
  * 不涉及: HTTP 层、认证、请求校验 (这些由 supervisor/controller 负责)
+ *
+ * 导出方式: @DubboService 以公共契约 IJournalReviewService 注册到 Nacos，
+ * supervisor 侧 JournalReviewFacade 通过 @DubboReference 远程调用——
+ * 执行（含 LLM 调用与落盘）全部发生在 agent-workers 进程内。
+ * 保留 @Service 使本类同时是本地 Spring bean，供 agent 进程内直接复用。
  */
 @Service
+@DubboService(interfaceClass = IJournalReviewService.class)
 public class JournalReviewServiceImpl implements JournalReviewService {
     
     private static final Logger log = LoggerFactory.getLogger(JournalReviewServiceImpl.class);

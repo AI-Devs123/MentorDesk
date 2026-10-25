@@ -30,10 +30,9 @@ dubbo:
   provider:
     filter: destructiveOperationDubboFilter,agentRbacDubboFilter
 
-# LLM 配置（llm.api-key/model/timeout-seconds 由 agent-workers 的 LLMClient 通过 @Value 读取）
-# 注意：日记落盘基准目录由 SandboxPathValidator 硬编码为 data/nexusmind/sandbox/journals
-# （相对于进程工作目录），此处不配置 storage-path，避免出现"配了但没人读"的死配置
-llm:
-  api-key: ${LLM_API_KEY:sk-test}
-  model: gpt-4o-mini
-  timeout-seconds: 5
+# 说明：llm.* 配置已移至 nexusmind-agent-workers/src/main/resources/application.yml
+# （读取方 LLMClient 属于 agent-workers 模块，配置应与实现同模块）。
+# 当前 journal 链路通过本地 @Autowired 注入在 supervisor 进程内执行 LLMClient，
+# 未配置时使用 @Value 默认值（api-key 为空 → 自动降级 Mock，与 sk-test 行为一致）。
+# 日记落盘基准目录由 SandboxPathValidator 硬编码为 data/nexusmind/sandbox/journals
+# （相对于进程工作目录），此处同样不配置 storage-path，避免死配置。

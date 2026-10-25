@@ -17,11 +17,12 @@ import java.util.Map;
 /**
  * 日记审查控制器
  * 处理日记复盘的审查和落盘请求
- * 
- * 职责:
- * 1. HTTP 层处理 (请求/响应)
- * 2. 基本校验 (字数、认证)
- * 3. 调用 agent-workers 的核心能力
+ *
+ * 职责（HTTP 入口层，仅此两层）:
+ * 1. 基本校验 (字数范围)
+ * 2. 调用 agent-workers 的核心能力（@DubboReference 远程调用）
+ *
+ * 认证由 JwtAuthenticationFilter 统一负责，不在本类重复。
  */
 @RestController
 @RequestMapping("/api/v1/journal")

@@ -2,33 +2,38 @@ package com.nexusmind.supervisor.service;
 
 import com.nexusmind.api.dto.DataPayload;
 import com.nexusmind.api.service.IJournalReviewService;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Service;
 
 /**
  * 日记审查门面服务 (supervisor 层 - 薄层)
- * 
+ *
  * 职责:
- * - 调用 nexusmind-agent-workers 的核心服务
+ * - 以 Dubbo 消费者身份调用 nexusmind-agent-workers 的核心服务
  * - 暴露给 Controller 层
- * - 不涉及核心业务逻辑 (那些都在 agent-workers 中)
- * 
- * 注意: 这是一个门面(Facade) 模式的实现，用于维持层级分离
+ * - 不涉及核心业务逻辑 (那些都在 agent-workers 进程中执行)
+ *
+ * 注意: 这是一个门面(Facade) 模式的实现，用于维持层级分离。
+ * 注入方式为 @DubboReference（原为 @Autowired 本地注入）：
+ * 本地注入会把 agent 的类加载进 supervisor 进程，导致"日记执行实际跑在
+ * supervisor 里、落盘落 supervisor 工作目录、llm 配置读 supervisor 的 yml"。
+ * 改为远程引用后，执行、落盘、配置读取全部回归 agent-workers 进程。
  */
 @Service
 public class JournalReviewFacade {
-    
+
     /**
-     * 注入 agent-workers 的核心服务
-     * 通过公共 API 契约接口
+     * Dubbo 引用 agent-workers 的核心服务（公共 API 契约接口）。
+     * 服务方在 JournalReviewServiceImpl 上以
+     * @DubboService(interfaceClass = IJournalReviewService.class) 导出。
      */
-    @Autowired
+    @DubboReference
     private IJournalReviewService journalReviewService;
-    
+
     /**
      * 审查日记并落盘
-     * 委托给 agent-workers 的实现
-     * 
+     * 委托给 agent-workers 的实现（跨进程 Dubbo 调用）
+     *
      * @param rawContent 原始日记内容
      * @return 包含条目、路径、统计信息的数据载体
      */
