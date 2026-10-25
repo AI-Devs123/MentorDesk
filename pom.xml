@@ -12,6 +12,7 @@
     <modules>
         <module>nexusmind-api</module>
         <module>nexusmind-security</module>
+        <module>nexusmind-agent-workers</module>
         <module>nexusmind-supervisor</module>
         <module>nexusmind-gateway</module>
     </modules>
@@ -56,6 +57,13 @@
             <dependency>
                 <groupId>com.nexusmind</groupId>
                 <artifactId>nexusmind-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- 内部 Agent Workers 模块 -->
+            <dependency>
+                <groupId>com.nexusmind</groupId>
+                <artifactId>nexusmind-agent-workers</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

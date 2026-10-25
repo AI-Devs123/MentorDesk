@@ -64,7 +64,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             String authHeader = request.getHeader("Authorization");
-            logger.debug("Authorization header: {}", authHeader != null ? "present" : "missing");
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 throw new JwtException("缺少或无效的 Authorization header");
@@ -83,27 +82,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             role != null ? List.of(new SimpleGrantedAuthority("ROLE_" + role)) : List.of());
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
-            // Token 验证成功，继续处理请求（STATELESS 会话，结束后清理上下文防线程污染）
-            try {
-                filterChain.doFilter(request, response);
-            } finally {
-                SecurityContextHolder.clearContext();
-            }
-
         } catch (JwtException e) {
+            // 认证失败是我们自己的响应：401 + 明确原因
             logger.warn("Token validation failed: {}", e.getMessage());
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
+            response.setContentType("application/json;charset=UTF-8");
+            response.setCharacterEncoding("UTF-8");
             response.getWriter().write("{\"message\": \"Token 验证失败: " + e.getMessage() + "\"}");
-        } catch (Exception e) {
-            logger.error("Unexpected error in JWT filter", e);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.setContentType("application/json");
-            response.getWriter().write("{\"message\": \"服务器错误\"}");
+            return;
+        }
+        // 注意：不再用 catch (Exception) 兜底 doFilter。
+        // 业务异常一旦在这里被改写成 "服务器错误" 空响应，
+        // 真实根因（堆栈）就彻底消失，前端只看到无信息量的 500。
+
+        // Token 验证成功，继续处理请求（STATELESS 会话，结束后清理上下文防线程污染）
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            SecurityContextHolder.clearContext();
         }
     }
 
     private boolean isPublicPath(String uri) {
         return PUBLIC_PATHS.stream().anyMatch(uri::startsWith);
+    }
+
+    /**
+     * ERROR dispatch（如无匹配 handler 时转发 /error）时也要执行本过滤器。
+     * OncePerRequestFilter 默认跳过 ERROR dispatch，导致该轮请求没有任何人写
+     * SecurityContext，AuthorizationFilter 判定匿名后直接返回 403 空响应，
+     * 把本应暴露的 404 掩盖成 403（前端看到的就是“莫名 403”）。
+     */
+    @Override
+    protected boolean shouldNotFilterErrorDispatch() {
+        return false;
     }
 }

@@ -24,8 +24,12 @@ public class SnapshotRepository {
     
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
-    
-    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // 使用 Spring 管理的 ObjectMapper（已注册 JavaTimeModule）。
+    // 裸 new ObjectMapper() 无法序列化/反序列化 ExecutionSnapshot 的 Instant 字段，
+    // 会导致 validateAndConsumeToken 的 readValue 抛异常、令牌校验假失败。
+    @Autowired
+    private ObjectMapper objectMapper;
     
     /**
      * 保存快照到 Redis

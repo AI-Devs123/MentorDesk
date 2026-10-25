@@ -29,3 +29,11 @@ dubbo:
     port: 50051
   provider:
     filter: destructiveOperationDubboFilter,agentRbacDubboFilter
+
+# LLM 配置（llm.api-key/model/timeout-seconds 由 agent-workers 的 LLMClient 通过 @Value 读取）
+# 注意：日记落盘基准目录由 SandboxPathValidator 硬编码为 data/nexusmind/sandbox/journals
+# （相对于进程工作目录），此处不配置 storage-path，避免出现"配了但没人读"的死配置
+llm:
+  api-key: ${LLM_API_KEY:sk-test}
+  model: gpt-4o-mini
+  timeout-seconds: 5

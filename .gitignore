@@ -81,3 +81,6 @@ supervisor.log
 supervisor.pid
 gateway.log
 gateway.pid
+
+# 运行时落盘数据（日记沙箱演示数据，路径以进程工作目录为基准）
+data/

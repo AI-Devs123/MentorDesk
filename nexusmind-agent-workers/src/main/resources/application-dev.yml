@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: nexusmind-agent-workers
+  profiles:
+    active: dev

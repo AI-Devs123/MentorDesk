@@ -1,11 +1,15 @@
 package com.nexusmind.gateway.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexusmind.agent.facade.AgentStreamRequest;
 import com.nexusmind.agent.facade.AgentStreamResponse;
 import com.nexusmind.agent.facade.AgentStreamingFacade;
 import com.nexusmind.agent.facade.CancelTaskRequest;
 import com.nexusmind.agent.facade.CancelTaskResponse;
 import com.nexusmind.security.auth.JwtTokenProvider;
+import com.nexusmind.security.destructive.DestructiveOperationType;
+import com.nexusmind.security.destructive.ExecutionSnapshot;
+import com.nexusmind.security.destructive.RiskLevel;
 import com.nexusmind.security.rbac.AgentRbacContext;
 import com.nexusmind.security.rbac.AgentRole;
 import org.apache.dubbo.common.stream.StreamObserver;
@@ -16,6 +20,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.util.DigestUtils;
+
+import java.time.Instant;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -53,9 +59,16 @@ public class AgentGatewayController {
     // 注入 Redis Template，用于第3层Token确认机制
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
-    
+
+    // 注入 Jackson（Spring 管理的实例，已注册 JavaTimeModule，可正确序列化 Instant 字段）
+    @Autowired
+    private ObjectMapper objectMapper;
+
     // Redis Key前缀：agent:confirm:{userId}:{token}
     private static final String REDIS_CONFIRM_KEY_PREFIX = "agent:confirm:";
+
+    // Supervisor 侧 SnapshotRepository 的快照键前缀（resume 校验依赖，两边必须一致）
+    private static final String SUPERVISOR_SNAPSHOT_KEY_PREFIX = "nexusmind:snapshot:";
     
     // Token有效期（3分钟）
     private static final long TOKEN_EXPIRY_MINUTES = 3;
@@ -122,7 +135,12 @@ public class AgentGatewayController {
                     TokenGenerationResult tokenResult = generateConfirmToken(userId, prompt);
                     if (tokenResult != null) {
                         log.warn("🛑 [Gateway-Layer3] 破坏性操作需要确认: prompt={}", prompt);
-                        
+
+                        // 【Resume 联调】按 Supervisor 的快照键格式补写执行快照。
+                        // 挂起发生在网关层、Supervisor 从未参与，若不补写，
+                        // 核准时 SnapshotRepository.validateAndConsumeToken 找不到快照 → TOKEN_INVALID
+                        saveSupervisorSnapshot(taskId, tokenResult, prompt);
+
                         Map<String, Object> confirmData = new HashMap<>();
                         confirmData.put("taskId", taskId);
                         confirmData.put("timestamp", System.currentTimeMillis());
@@ -429,7 +447,46 @@ public class AgentGatewayController {
             return null;
         }
     }
-    
+
+    /**
+     * 【第3层防护·Resume 联调】按 Supervisor 的键格式补写执行快照
+     *
+     * 背景：破坏性操作的挂起发生在网关层（未调用 Supervisor），而核准时
+     * Supervisor 侧 TaskExecutionServiceImpl.resumeTask 通过
+     * SnapshotRepository.validateAndConsumeToken 校验
+     * nexusmind:snapshot:{executionId} 中的 confirmationToken。
+     * 两侧状态不互通会导致核准必然返回 TOKEN_INVALID，
+     * 故在挂起时按 Supervisor 的键格式与类型补写快照（TTL 与确认 Token 一致）。
+     */
+    private void saveSupervisorSnapshot(String taskId, TokenGenerationResult tokenResult, String prompt) {
+        if (redisTemplate == null) {
+            log.warn("⚠️ [Gateway-Layer3] Redis未注入，跳过快照补写");
+            return;
+        }
+
+        try {
+            ExecutionSnapshot snapshot = new ExecutionSnapshot();
+            snapshot.setTaskId(taskId);
+            // 网关第3层只识别 delete/remove 类关键词，操作类型即文件删除
+            snapshot.setOperationType(DestructiveOperationType.FILE_DELETE);
+            snapshot.setRiskLevel(RiskLevel.HIGH);
+            snapshot.setOperationDescription("【破坏性操作确认】" + prompt);
+            // 网关层不做文件级解析，直接透传原始 prompt 作为变更预览
+            snapshot.setChangePreview("prompt: " + prompt);
+            snapshot.setConfirmationToken(tokenResult.token);
+            snapshot.setExpiresAt(Instant.now().plusSeconds(TOKEN_EXPIRY_MINUTES * 60));
+
+            String snapshotKey = SUPERVISOR_SNAPSHOT_KEY_PREFIX + taskId;
+            String json = objectMapper.writeValueAsString(snapshot);
+            redisTemplate.opsForValue().set(snapshotKey, json, TOKEN_EXPIRY_MINUTES, TimeUnit.MINUTES);
+
+            log.info("🧾 [Gateway-Layer3] 执行快照已补写: key={}, token={}, ttl={}min",
+                    snapshotKey, tokenResult.token, TOKEN_EXPIRY_MINUTES);
+        } catch (Exception e) {
+            log.error("❌ [Gateway-Layer3] 快照补写失败: taskId={}", taskId, e);
+        }
+    }
+
     /**
      * 从 Authorization header 中提取 JWT Token 并解析出 Agent 角色
      * 

@@ -25,6 +25,12 @@
             <artifactId>nexusmind-security</artifactId>
         </dependency>
 
+        <!-- 内部核心能力库 (Agent Workers) -->
+        <dependency>
+            <groupId>com.nexusmind</groupId>
+            <artifactId>nexusmind-agent-workers</artifactId>
+        </dependency>
+
         <!-- Spring Boot Starter -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
