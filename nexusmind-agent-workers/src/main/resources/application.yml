@@ -17,10 +17,12 @@ dubbo:
 
 # LLM 配置（读取方为本模块的 com.nexusmind.agent.llm.LLMClient，@Value 注入）
 # 注意：api-key 为 sk-test 或空时 LLMClient 自动降级为 Mock 响应，不发起真实网络调用
+# base-url 支持任意 OpenAI 兼容端点（通义千问/DeepSeek/Ollama 等），切换无需改码
 llm:
   api-key: ${LLM_API_KEY:sk-test}
   model: gpt-4o-mini
   timeout-seconds: 5
+  base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
 
 logging:
   level:

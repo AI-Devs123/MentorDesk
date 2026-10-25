@@ -103,6 +103,10 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- 显式声明主类：防御 jar 增量残留导致的二次 repackage 找不到主类 -->
+                    <mainClass>com.nexusmind.agent.AgentWorkersApplication</mainClass>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
