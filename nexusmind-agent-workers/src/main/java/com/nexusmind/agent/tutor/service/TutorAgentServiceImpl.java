@@ -7,7 +7,9 @@ import com.nexusmind.agent.tutor.diagnostic.WeaknessDiagnosticService;
 import com.nexusmind.agent.tutor.diagnostic.model.ConfusionAnalysisResult;
 import com.nexusmind.agent.tutor.prompt.SocraticPromptTemplate;
 import com.nexusmind.api.dto.TutorReflectionPrompt;
+import com.nexusmind.api.service.ITutorService;
 import com.nexusmind.security.rbac.AgentSecured;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,15 +26,20 @@ import java.util.UUID;
  *
  * 执行边界 (READ_ONLY_RAG):
  * - 无本地文件写、无代码 AST、无外部持久化；仅读取 LLMClient 与内存诊断器
- * - 挂 @AgentSecured(readOnly=true): 编码"导师禁写"约束，切片4 经 Dubbo
+ * - 挂 @AgentSecured(readOnly=true): 编码"导师禁写"约束，经 Dubbo
  *   导出后由 AgentRbacDubboFilter 在 RPC 层强制执行
+ *
+ * 切片4: 实现公共契约 ITutorService 并以 @DubboService 导出到 Nacos，
+ * supervisor 侧 TutorFacade 远程引用——执行(含 LLM 调用)全部发生在
+ * agent-workers 进程，不落入 supervisor。
  *
  * 历史知识关联说明: 本版本暂不产出 KnowledgeLink (传空列表)。
  * 硬编码假历史 ID 触碰"杜绝空泛"交付红线 (切片3 评审 P0-3)，真实关联点
  * 待只读 JournalHistoryReader 落地后从历史复盘记录中挖掘。
  */
 @Service
-public class TutorAgentServiceImpl {
+@DubboService(interfaceClass = ITutorService.class)
+public class TutorAgentServiceImpl implements ITutorService {
 
     private static final Logger log = LoggerFactory.getLogger(TutorAgentServiceImpl.class);
 
