@@ -91,6 +91,20 @@
             <version>2.15.1</version>
         </dependency>
 
+        <!-- JavaParser 代码 AST 解析 (CodeAgent 切片1) -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+            <version>3.25.10</version>
+        </dependency>
+        <!-- 符号求解器：CombinedTypeSolver / JavaParserTypeSolver / ReflectionTypeSolver / JavaSymbolSolver
+             （call.resolve() 全限定签名解析依赖此独立 artifact，javaparser-core 不含） -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-symbol-solver-core</artifactId>
+            <version>3.25.10</version>
+        </dependency>
+
         <!-- 测试 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
