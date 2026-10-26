@@ -2,6 +2,7 @@ package com.nexusmind.agent.code.orchestrator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexusmind.agent.code.CancelTokenRegistry;
+import com.nexusmind.agent.code.index.SymbolIndex;
 import com.nexusmind.agent.code.parser.JavaParserSymbolExtractor;
 import com.nexusmind.agent.code.sink.SymbolSink;
 import com.nexusmind.api.dto.CodeAnalysisProgress;
@@ -25,11 +26,22 @@ class ProjectSymbolAnalyzerTest {
     private final ObjectMapper om = new ObjectMapper();
 
     private ProjectSymbolAnalyzer analyzer() {
+        return analyzer(new CancelTokenRegistry(), newSymbolIndex());
+    }
+
+    private ProjectSymbolAnalyzer analyzer(CancelTokenRegistry registry, SymbolIndex index) {
+        PathSandboxValidator validator = new PathSandboxValidator(tempDir.toString());
         return new ProjectSymbolAnalyzer(
                 new JavaParserSymbolExtractor(),
-                new PathSandboxValidator(tempDir.toString()),
-                new CancelTokenRegistry(),
-                sink, om);
+                validator,
+                registry,
+                sink,
+                index,
+                om);
+    }
+
+    private SymbolIndex newSymbolIndex() {
+        return new SymbolIndex(om, new PathSandboxValidator(tempDir.toString()));
     }
 
     private void seedProject(Path sandbox, String projectName) throws Exception {
@@ -81,11 +93,8 @@ class ProjectSymbolAnalyzerTest {
     void abortsWhenCancelTokenSet() throws Exception {
         seedProject(tempDir, "myproject");
         CancelTokenRegistry registry = new CancelTokenRegistry();
-        ProjectSymbolAnalyzer analyzer = new ProjectSymbolAnalyzer(
-                new JavaParserSymbolExtractor(),
-                new PathSandboxValidator(tempDir.toString()),
-                registry, sink, om);
         registry.markCancelled("code-analysis:t2");
+        ProjectSymbolAnalyzer analyzer = analyzer(registry, newSymbolIndex());
 
         List<CodeAnalysisProgress> captured = new ArrayList<>();
         analyzer.analyze(new CodeAnalysisRequest("t2", "myproject", "JAVA"), captured::add);
@@ -94,5 +103,20 @@ class ProjectSymbolAnalyzerTest {
                         p.stage().equals("FAILED") && p.payloadJson().contains("TASK_ABORTED")),
                 "ABORT 应命中并产出 FAILED(TASK_ABORTED)");
         Mockito.verify(sink, Mockito.never()).persist(Mockito.anyString(), Mockito.anyList());
+    }
+
+    @Test
+    void feedsSymbolIndexWhileAnalyzing() throws Exception {
+        seedProject(tempDir, "indexproj");
+        SymbolIndex index = newSymbolIndex();
+
+        List<CodeAnalysisProgress> captured = new ArrayList<>();
+        analyzer(new CancelTokenRegistry(), index)
+                .analyze(new CodeAnalysisRequest("t4", "indexproj", "JAVA"), captured::add);
+
+        assertTrue(index.size("t4") > 0,
+                "切片3 契约: 分析过程中应把符号实时灌入 SymbolIndex，供 SearchSymbolsTool 检索");
+        assertTrue(index.find("t4", "SampleOrderService", "CLASS").size() > 0,
+                "索引中应能检索到 SampleOrderService 类型符号");
     }
 }

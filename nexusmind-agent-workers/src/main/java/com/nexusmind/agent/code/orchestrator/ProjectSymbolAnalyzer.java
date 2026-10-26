@@ -2,6 +2,7 @@ package com.nexusmind.agent.code.orchestrator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexusmind.agent.code.CancelTokenRegistry;
+import com.nexusmind.agent.code.index.SymbolIndex;
 import com.nexusmind.agent.code.parser.JavaParserSymbolExtractor;
 import com.nexusmind.agent.code.sink.SymbolSink;
 import com.nexusmind.api.dto.CodeAnalysisProgress;
@@ -46,17 +47,20 @@ public class ProjectSymbolAnalyzer {
     private final PathSandboxValidator validator;
     private final CancelTokenRegistry cancelRegistry;
     private final SymbolSink symbolSink;
+    private final SymbolIndex symbolIndex;
     private final ObjectMapper objectMapper;
 
     public ProjectSymbolAnalyzer(JavaParserSymbolExtractor extractor,
                                 PathSandboxValidator validator,
                                 CancelTokenRegistry cancelRegistry,
                                 SymbolSink symbolSink,
+                                SymbolIndex symbolIndex,
                                 ObjectMapper objectMapper) {
         this.extractor = extractor;
         this.validator = validator;
         this.cancelRegistry = cancelRegistry;
         this.symbolSink = symbolSink;
+        this.symbolIndex = symbolIndex;
         this.objectMapper = objectMapper;
     }
 
@@ -79,6 +83,9 @@ public class ProjectSymbolAnalyzer {
                     "{\"error\":\"" + e.getMessage() + "\"}"));
             return;
         }
+
+        // 切片3：同一 taskId 重跑时先清空旧分区，保证索引幂等（不残留上一轮的调用边）
+        symbolIndex.clear(taskId);
 
         // 2. 扫描匹配文件列表
         List<Path> javaFiles;
@@ -116,6 +123,9 @@ public class ProjectSymbolAnalyzer {
                     List<UnifiedCodeSymbol> symbols = extractor.extractSymbols(
                             file, relativeFilePath, projectRoot);
                     processed++;
+
+                    // 切片3：实时灌入倒排索引，供 SearchSymbolsTool 在同一任务内 O(1) 反查调用者
+                    symbolIndex.registerAll(taskId, symbols);
 
                     // 硬伤C：仅发送本文件的增量符号载荷，杜绝带宽爆炸
                     symbolSink.persist(taskId, symbols);

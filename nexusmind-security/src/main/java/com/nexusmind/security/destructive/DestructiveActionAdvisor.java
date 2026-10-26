@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -101,14 +102,16 @@ public class DestructiveActionAdvisor {
     }
 
     /**
-     * 生成变更预览（简化实现）
-     * TODO: 升级为完整的 Diff 生成逻辑，支持标准 unified diff 格式
-     * 计划版本：2.0.0
-     * 
-     * @deprecated 当前为简化版，仅提供基本字符串拼接，不支持真实 Diff 对比
+     * 生成变更预览。
+     *
+     * <p>联动 Week3 {@link DiffEngine}：当调用参数携带 {@code proposedContent}（待写入的新内容）时，
+     * 直接产出标准 unified diff 预览；否则退回类型化的描述性文案。取代了此前仅做字符串拼接的占位实现。
      */
-    @Deprecated(since = "1.0.0")
     private String generateChangePreview(DestructiveOperationType type, Map<String, Object> args) {
+        Object proposed = args.get("proposedContent");
+        if (proposed instanceof String pc && !pc.isBlank()) {
+            return DiffEngine.toUnifiedDiff(List.of(), pc.lines().toList());
+        }
         return switch (type) {
             case FILE_DELETE -> "将删除文件: " + args.getOrDefault("filePath", "unknown");
             case FILE_OVERWRITE -> "将覆盖文件: " + args.getOrDefault("filePath", "unknown");
