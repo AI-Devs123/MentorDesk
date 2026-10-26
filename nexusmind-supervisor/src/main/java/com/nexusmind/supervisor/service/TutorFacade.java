@@ -24,7 +24,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class TutorFacade {
 
-    @DubboReference
+    /**
+     * timeout=30000: TutorAgent 内含真实 LLM 调用 (deepseek 等), 实测耗时 7~10s,
+     * 默认 Dubbo 引用超时(秒级)会触发 DEADLINE_EXCEEDED, 必须显式抬高 (切片4 实测修复)。
+     */
+    @DubboReference(timeout = 30000)
     private ITutorService tutorService;
 
     /**

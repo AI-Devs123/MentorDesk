@@ -38,7 +38,7 @@ import java.util.UUID;
  * 待只读 JournalHistoryReader 落地后从历史复盘记录中挖掘。
  */
 @Service
-@DubboService(interfaceClass = ITutorService.class)
+@DubboService(interfaceClass = ITutorService.class, timeout = 30000)
 public class TutorAgentServiceImpl implements ITutorService {
 
     private static final Logger log = LoggerFactory.getLogger(TutorAgentServiceImpl.class);
@@ -174,7 +174,24 @@ public class TutorAgentServiceImpl implements ITutorService {
                     knowledgeLinks);
 
         } catch (Exception e) {
-            log.error("[TutorAgent] 解析 LLM 启发提问响应失败", e);
+            if (allowFallback) {
+                // LLM 返回非法 JSON (如字符串内含未转义英文双引号导致解析失败):
+                // 先抽取最外层 JSON 对象子串再试一次, 仍失败则降级 Mock (与 LLM 调用失败同策略),
+                // 保证 DAG 流式链不被异常中断 (切片4 实测修复)。
+                String repaired = extractJsonObject(rawJson);
+                if (repaired != null && !repaired.equals(rawJson.trim())) {
+                    try {
+                        return parseToTutorDto(repaired, fallbackDomain, contextSummary, false);
+                    } catch (Exception retryErr) {
+                        log.warn("[TutorAgent] JSON 容错修复仍失败, 降级 Mock", retryErr);
+                    }
+                } else {
+                    log.warn("[TutorAgent] 解析 LLM 启发提问响应失败, 降级 Mock", e);
+                }
+                return parseToTutorDto(SocraticPromptTemplate.getMockJsonTemplate(null),
+                        fallbackDomain, contextSummary, false);
+            }
+            log.error("[TutorAgent] 解析 LLM 启发提问响应失败 (降级已禁用)", e);
             throw new RuntimeException("TutorAgent 生成启发提问失败: " + e.getMessage(), e);
         }
     }
@@ -219,5 +236,21 @@ public class TutorAgentServiceImpl implements ITutorService {
             s = s.substring(0, s.length() - 3);
         }
         return s.trim();
+    }
+
+    /**
+     * 从 LLM 可能夹带的文本中抽取最外层 JSON 对象子串 (首 { 到末 }),
+     * 兼容模型在 JSON 前后附加说明文字或残留代码块标记的场景。
+     */
+    private static String extractJsonObject(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        int start = raw.indexOf('{');
+        int end = raw.lastIndexOf('}');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        return raw.substring(start, end + 1);
     }
 }

@@ -20,7 +20,7 @@ dubbo:
 # base-url 支持任意 OpenAI 兼容端点（通义千问/DeepSeek/Ollama 等），切换无需改码
 llm:
   api-key: ${LLM_API_KEY:sk-test}
-  model: gpt-4o-mini
+  model: ${LLM_MODEL:gpt-4o-mini}
   timeout-seconds: 5
   base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
 

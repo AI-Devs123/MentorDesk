@@ -27,7 +27,11 @@ public class JournalReviewFacade {
      * 服务方在 JournalReviewServiceImpl 上以
      * @DubboService(interfaceClass = IJournalReviewService.class) 导出。
      */
-    @DubboReference
+    /**
+     * timeout=30000: reviewAndPersist 内含真实 LLM 三要素抽取, 实测耗时 5s+,
+     * 默认 Dubbo 引用超时(秒级)会触发 DEADLINE_EXCEEDED, 必须显式抬高 (切片4 实测修复)。
+     */
+    @DubboReference(timeout = 30000)
     private IJournalReviewService journalReviewService;
 
     /**

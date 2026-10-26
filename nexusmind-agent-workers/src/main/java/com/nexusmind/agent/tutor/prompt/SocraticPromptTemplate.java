@@ -43,6 +43,7 @@ public final class SocraticPromptTemplate {
                - [对比辨析设问 (questions)]: 提出 1~2 个具有高度底层辨析度的思考题，要求对比两个关联技术机制的本质边界差异（需标明 conceptA 与 conceptB）。
                - [反思实验 (reflectiveExperiment)]: 给出一条在本地或测试环境中可以通过打日志、看断点、观察指标（Metrics）直观验证该机制的极简操作指引。
             3. 必须输出合法的纯 JSON 字符串，严禁在最外层包裹 ```json 或 ``` 标记，严禁附带额外寒暄。
+            4. JSON 字符串值 (targetDomain / coreConflict / principleAnalysis / questionText / conceptA / conceptB / reflectiveExperiment) 内部严禁出现英文双引号 "，如需引用术语请使用中文引号 『』 或单引号 '，否则会导致 JSON 非法解析失败。
 
             【JSON Schema 格式】：
             {"targetDomain": "技术领域(如: Concurrency / RPC / Database)","coreConflict": "底层本质矛盾阐述 (1-2 句话)","principleAnalysis": "原理深度剖析正文","questions": [{"index": 1,"conceptA": "概念A","conceptB": "概念B","questionText": "对比辨析设问正文"}],"reflectiveExperiment": "极简本地验证实验指引"}
