@@ -114,7 +114,7 @@ public class ProjectSymbolAnalyzer {
 
                 try {
                     List<UnifiedCodeSymbol> symbols = extractor.extractSymbols(
-                            file.toFile(), relativeFilePath, projectRoot);
+                            file, relativeFilePath, projectRoot);
                     processed++;
 
                     // 硬伤C：仅发送本文件的增量符号载荷，杜绝带宽爆炸
