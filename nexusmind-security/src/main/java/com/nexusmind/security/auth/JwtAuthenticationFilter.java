@@ -117,4 +117,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilterErrorDispatch() {
         return false;
     }
+
+    /**
+     * ASYNC dispatch 时同样必须执行本过滤器。
+     *
+     * SSE / Flux 端点在 Servlet 栈是异步请求：首轮 REQUEST 派发认证通过后启动异步，
+     * 响应写回前会再来一次 ASYNC 派发。OncePerRequestFilter 默认在 ASYNC 派发时跳过，
+     * 于是这一轮没有任何人写 SecurityContext，AuthorizationFilter（Security 6 默认对所有
+     * 派发类型生效）判定匿名 → 直接返回 403。
+     *
+     * 现象：/api/v1/cognitive/stream、/api/v1/agent/stream 等一切流式端点即使用合法 Token
+     * 也恒 403，而同步端点（如 /api/v1/health）正常 200。
+     *
+     * 返回 false 让过滤器在 ASYNC 派发时重新校验同一请求头里的 Token 并写入上下文。
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
 }
