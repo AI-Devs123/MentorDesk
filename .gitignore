@@ -1,5 +1,7 @@
 # Maven
 target/
+# 临时备份目录（本机跑 Maven 时为绕开 safe-delete 重命名 target 产生，非源码）
+target.bak_*/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
@@ -84,3 +86,4 @@ gateway.pid
 
 # 运行时落盘数据（日记沙箱演示数据，路径以进程工作目录为基准）
 data/
+

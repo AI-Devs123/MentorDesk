@@ -90,6 +90,15 @@ public enum Permission {
         AgentRole.TUTOR_AGENT
     )),
     
+    // ============ WebCuratorAgent 权限 ============
+    /**
+     * 网页入库（抓取 → 去噪 → LLM 萃取 → 语义分块 → 沙箱落盘）
+     */
+    WEB_INGEST("web.ingest", "网页入库", EnumSet.of(
+        AgentRole.SUPERVISOR,
+        AgentRole.WEB_CURATOR
+    )),
+
     // ============ 禁止的权限 (反向定义) ============
     /**
      * 健康私密数据访问（所有 Agent 禁止）

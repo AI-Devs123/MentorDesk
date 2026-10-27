@@ -66,8 +66,23 @@ public enum AgentRole {
      * - ❌ 任何本地物理文件写操作
      * - ❌ 代码执行
      */
-    TUTOR_AGENT("tutorAgent", "导师代理");
-    
+    TUTOR_AGENT("tutorAgent", "导师代理"),
+
+    /**
+     * 网页策展代理 - 网页抓取 / 去噪 / 知识萃取
+     * 职责：
+     * - 经 SSRF 防护的双通道抓取网页
+     * - 正文提纯与 LLM 结构化萃取、自适应语义分块
+     * - 入库载荷落盘沙箱 inbox/web/
+     * 
+     * 权限：
+     * - ✅ 网页入库（WEB_INGEST）
+     * - ❌ 代码库访问
+     * - ❌ 日记目录访问
+     * - ❌ 健康私密数据访问
+     */
+    WEB_CURATOR("webCurator", "网页策展代理");
+
     /**
      * 角色标识符
      */
