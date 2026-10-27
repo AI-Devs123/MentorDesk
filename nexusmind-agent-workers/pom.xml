@@ -125,6 +125,13 @@
             <version>1.47.0</version>
         </dependency>
 
+        <!-- Jsoup：切片 2 的 DOM 解析 / 预清洗 / 正文容器提取基座 -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+
         <!-- 测试 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
