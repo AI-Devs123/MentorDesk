@@ -111,6 +111,20 @@
             <version>3.25.10</version>
         </dependency>
 
+        <!-- OkHttp：Fast Path 抓取器。自定义 Dns 钉死 SSRF 核准的公网 IP，消除 DNS 重绑绕过窗口 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
+        </dependency>
+
+        <!-- Playwright：Render Path 无头 Chromium 渲染（SPA / 反爬页面） -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.47.0</version>
+        </dependency>
+
         <!-- 测试 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
