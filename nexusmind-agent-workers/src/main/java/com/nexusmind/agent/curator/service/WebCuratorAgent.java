@@ -74,6 +74,7 @@ public class WebCuratorAgent implements IWebCuratorService {
         try {
             // 1) 双通道抓取（含 SSRF 防护；SecurityException 不降级，直接上抛）
             String rawHtml = fetcher.fetch(url, request.forceRenderJs());
+            int rawHtmlCharCount = rawHtml == null ? 0 : rawHtml.length();
 
             // 2) 正文提纯（过短抛 ContentExtractionException，不静默产空文档）
             CleanArticlePipeline.CleanMarkdownDocument clean =
@@ -84,19 +85,21 @@ public class WebCuratorAgent implements IWebCuratorService {
                     ingestPipeline.process(clean);
 
             // 4) 组装带 frontmatter 的 Markdown 并落盘沙箱
-            String savedRelativePath = persist(payload, request.forceRenderJs());
+            PersistedAsset asset = persist(payload, request.forceRenderJs());
 
             // 5) 映射为契约返回值（agent 内部 DocMetadata → api 层 WebDocMetadata）
             DocMetadata md = payload.metadata();
             return new WebCurateResult(
                     request.requestId(),
                     payload.docId(),
-                    savedRelativePath,
+                    asset.relativePath(),
                     new WebDocMetadata(md.title(), md.summary(), md.tags(), md.entities()),
                     payload.chunks().size(),
                     payload.fullMarkdown().length(),
                     clean.meta().canonical(),
-                    request.forceRenderJs()
+                    request.forceRenderJs(),
+                    rawHtmlCharCount,
+                    asset.fileSizeBytes()
             );
         } catch (SecurityException se) {
             // SSRF 拦截：明确向上传播，让调用方知悉抓取被安全层拒绝（而非当作普通失败）
@@ -109,12 +112,19 @@ public class WebCuratorAgent implements IWebCuratorService {
         }
     }
 
+    /** 落盘产物：相对路径 + 真实字节数（供契约回传 fileSizeBytes） */
+    private record PersistedAsset(String relativePath, long fileSizeBytes) {
+    }
+
     /**
      * 把入库载荷落盘为带 YAML frontmatter 的 Markdown。
      *
-     * @return 相对沙箱根的路径，如 inbox/web/20261027221310_xxx.md
+     * <p>字节数优先由沙箱服务回读真实文件大小（含 UTF-8 多字节字符的实际开销），
+     * 回读失败时退化为内容 UTF-8 字节估算，保证契约字段永不为 0 而误导前端。
+     *
+     * @return 相对沙箱根的路径与真实字节数，如 inbox/web/20261027221310_xxx.md
      */
-    private String persist(CuratedIngestPipeline.IngestPayload payload, boolean renderJsUsed) {
+    private PersistedAsset persist(CuratedIngestPipeline.IngestPayload payload, boolean renderJsUsed) {
         String docId = payload.docId();
         DocMetadata md = payload.metadata();
         String ts = LocalDateTime.now().format(TS_FMT);
@@ -122,14 +132,26 @@ public class WebCuratorAgent implements IWebCuratorService {
         String relativePath = INBOX_DIR + "/" + ts + "_" + slug + ".md";
 
         String content = buildMarkdown(payload, md, renderJsUsed);
+        long sizeBytes;
         try {
             secureFileOps.writeFile(relativePath, content);
-            log.info("[WebCurator] 已落盘: {} (docId={}, chunks={})",
-                    relativePath, docId, payload.chunks().size());
+            sizeBytes = readFileSize(relativePath, content);
+            log.info("[WebCurator] 已落盘: {} (docId={}, chunks={}, {} bytes)",
+                    relativePath, docId, payload.chunks().size(), sizeBytes);
         } catch (IOException ioe) {
             throw new RuntimeException("沙箱落盘失败: " + relativePath, ioe);
         }
-        return relativePath;
+        return new PersistedAsset(relativePath, sizeBytes);
+    }
+
+    /** 回读落盘后的真实字节数；异常时按 UTF-8 估算，不因统计失败中断主流程。 */
+    private long readFileSize(String relativePath, String content) {
+        try {
+            return secureFileOps.getFileSize(relativePath);
+        } catch (Exception e) {
+            log.warn("[WebCurator] 文件大小回读失败，改用内容估算: {}", e.getMessage());
+            return content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        }
     }
 
     /**

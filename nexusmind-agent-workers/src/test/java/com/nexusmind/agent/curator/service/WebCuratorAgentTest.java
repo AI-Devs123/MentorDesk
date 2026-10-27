@@ -72,7 +72,9 @@ class WebCuratorAgentTest {
                         "doc_abc", md, fullMarkdown, originUrl, List.of(chunk));
 
         // 桩：抓取返回 html，提纯返回 cleanDoc，萃取分块返回 payload
-        when(fetcher.fetch(anyString(), anyBoolean())).thenReturn("<html><body>raw</body></html>");
+        String rawHtml = "<html><head><script>var t=1;</script></head>"
+                + "<body><div class=\"ad\">广告位</div><p>正文</p></body></html>";
+        when(fetcher.fetch(anyString(), anyBoolean())).thenReturn(rawHtml);
         when(cleanPipeline.execute(anyString(), anyString())).thenReturn(cleanDoc);
         when(ingestPipeline.process(org.mockito.ArgumentMatchers.any(CleanArticlePipeline.CleanMarkdownDocument.class)))
                 .thenReturn(payload);
@@ -93,9 +95,16 @@ class WebCuratorAgentTest {
         assertEquals(originUrl, result.canonicalUrl());
         assertNotNull(result.metadata());
 
+        // 切片5 新增：原始 HTML 规模与真实落盘字节数（供 SSE 降噪比 / 资产体积展示）
+        assertEquals(rawHtml.length(), result.rawHtmlCharCount());
+
         // 文件确实落盘（相对路径拼到沙箱根）
         Path savedFile = sandboxRoot.resolve(result.sandboxSavedPath());
         assertTrue(Files.exists(savedFile), "落盘文件应存在: " + savedFile);
+        assertEquals(Files.size(savedFile), result.fileSizeBytes(),
+                "fileSizeBytes 应等于磁盘上的真实字节数");
+        assertEquals((rawHtml.length() - fullMarkdown.length()) * 100 / rawHtml.length(),
+                result.noiseReductionPercent(), "降噪比应按 (原始-纯净)/原始 计算");
 
         String content = Files.readString(savedFile);
         assertTrue(content.contains("docId: doc_abc"), "frontmatter 应含 docId");
