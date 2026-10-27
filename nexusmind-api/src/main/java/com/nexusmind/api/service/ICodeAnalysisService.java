@@ -2,6 +2,7 @@ package com.nexusmind.api.service;
 
 import com.nexusmind.api.dto.CodeAnalysisProgress;
 import com.nexusmind.api.dto.CodeAnalysisRequest;
+import com.nexusmind.security.rbac.AgentSecured;
 
 import java.util.List;
 
@@ -27,5 +28,6 @@ public interface ICodeAnalysisService {
      * @param request 含 taskId / projectSubPath / language
      * @return 进度帧序列：SCANNING → PARSING* → INDEXED* → (COMPLETED | FAILED)
      */
+    @AgentSecured(allowedAgents = {"supervisor", "codeAgent"}, audit = true)
     List<CodeAnalysisProgress> analyzeProject(CodeAnalysisRequest request);
 }

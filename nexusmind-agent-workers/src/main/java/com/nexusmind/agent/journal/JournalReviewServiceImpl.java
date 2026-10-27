@@ -9,6 +9,7 @@ import com.nexusmind.api.dto.JournalEntryDTO;
 import com.nexusmind.api.dto.JournalEntryDTO.StructuredExtraction;
 import com.nexusmind.api.dto.ProcessingStats;
 import com.nexusmind.api.service.IJournalReviewService;
+import com.nexusmind.security.rbac.AgentSecured;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,7 +80,13 @@ public class JournalReviewServiceImpl implements JournalReviewService {
     
     /**
      * 审查日记并落盘
+     *
+     * <p><b>RBAC（切片5 闭环修复）：</b>接口 {@code IJournalReviewService.reviewAndPersist}
+     * 已声明 {@code @AgentSecured(allowedAgents={"supervisor","journalAgent"})}，由
+     * AgentRbacDubboFilter 在 Provider 端强制。此处再补方法级注解做纵深防御，
+     * 并约束：本实现绝不可被 codeAgent / tutorAgent 越权调用（日记属私密数据）。
      */
+    @AgentSecured(allowedAgents = {"supervisor", "journalAgent"}, audit = true)
     @Override
     public DataPayload reviewAndPersist(String rawContent) {
         long startTime = System.currentTimeMillis();
