@@ -2,7 +2,13 @@ package com.nexusmind.rag.engine;
 
 import com.nexusmind.api.rag.dto.RagIndexDocument;
 import com.nexusmind.api.rag.dto.ScoredCandidate;
+import com.nexusmind.rag.analysis.CodeSymbolAnalyzer;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.KnnFloatVectorField;
@@ -19,6 +25,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.SearcherFactory;
 import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.Directory;
@@ -73,7 +80,8 @@ public class LuceneDualEngineManager {
     private final Map<String, Integer> collectionDimMap = new ConcurrentHashMap<>();
 
     private final BM25Similarity bm25Similarity = new BM25Similarity(1.2f, 0.75f);
-    private final StandardAnalyzer fallbackAnalyzer = new StandardAnalyzer();
+    // 按集合名缓存分析器：code/web_kb 走代码感知分析器，其余（journal 等）保持 StandardAnalyzer
+    private final Map<String, Analyzer> analyzerMap = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
@@ -86,7 +94,8 @@ public class LuceneDualEngineManager {
         }
         Path path = Paths.get(indexBaseDir, collection).toAbsolutePath().normalize();
         Directory dir = FSDirectory.open(path);
-        IndexWriterConfig config = new IndexWriterConfig(fallbackAnalyzer);
+        // 按集合分发分析器：code/web_kb 用代码感知分析器，其余用 StandardAnalyzer
+        IndexWriterConfig config = new IndexWriterConfig(analyzerFor(collection));
         config.setSimilarity(bm25Similarity);
         config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
         IndexWriter writer = new IndexWriter(dir, config);
@@ -217,6 +226,52 @@ public class LuceneDualEngineManager {
         } finally {
             mgr.release(searcher);
         }
+    }
+
+    /**
+     * 按集合名分发分析器（切片 2 修复点 1：杜绝「全局替换 StandardAnalyzer」误伤中文日记分词）。
+     *
+     * <p>{@code code} / {@code web_kb} 走代码感知分析器（保留 {@code ->} 等算子 token + 子词拆解），
+     * 其余集合（如 journal 中文日记）保持 StandardAnalyzer。索引与查询共用同一实例，保证分词一致。
+     */
+    private Analyzer analyzerFor(String collection) {
+        return analyzerMap.computeIfAbsent(collection, c ->
+                ("code".equals(c) || "web_kb".equals(c)) ? new CodeSymbolAnalyzer() : new StandardAnalyzer());
+    }
+
+    /**
+     * 稀疏词法检索通道（按原始文本检索，切片 2 新增）。
+     *
+     * <p><b>修复点 3</b>：不再使用 {@code QueryParser.escape}（会把 {@code ->} 转义成 {@code \->}，
+     * 而 {@code \} 不在代码分词器的 token 白名单，导致算子被拆成单字符、精准符号召回失败）。
+     * 改为直接用对应集合的分析器把原始 query 切词，拼成 SHOULD 的 BooleanQuery，
+     * 既避免转义冲突与查询注入，又保证与索引端分词完全一致。
+     *
+     * <p><b>修复点 2</b>：复用 {@link #searchSparse(String, Query, int)} 的 SearcherManager NRT 路径，
+     * 不再 {@code DirectoryReader.open(dir)} 绕过近实时刷新。
+     */
+    public List<ScoredCandidate> searchSparseByText(String collection, String text, int topK) throws IOException {
+        if (text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+        Analyzer analyzer = analyzerFor(collection);
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        try (TokenStream ts = analyzer.tokenStream("content", text)) {
+            CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            while (ts.incrementToken()) {
+                String t = term.toString();
+                if (!t.isEmpty()) {
+                    builder.add(new TermQuery(new Term("content", t)), BooleanClause.Occur.SHOULD);
+                }
+            }
+            ts.end();
+        }
+        BooleanQuery query = builder.build();
+        if (query.clauses().isEmpty()) {
+            return Collections.emptyList();
+        }
+        return searchSparse(collection, query, topK);
     }
 
     private List<ScoredCandidate> mapToCandidates(IndexSearcher searcher, TopDocs topDocs, String collection)
