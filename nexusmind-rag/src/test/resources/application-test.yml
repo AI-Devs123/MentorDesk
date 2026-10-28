@@ -1,6 +1,9 @@
 nexusmind:
   rag:
     index-dir: target/nexusmind-rag-test-indices
+  # 测试环境不加载 300MB 模型：关闭精排总开关，直接验证纯 RRF 降级路径
+  rerank:
+    enabled: false
   embedding:
     mock: true
 

@@ -101,4 +101,19 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- 临时绕过：本机 target/ 被外部进程(文件监视器/Defender)锁住导致资源拷贝 AccessDenied，
+         让所有模块构建到各自的 target-slice4 目录（可用 -Dslice4.build.dir 覆盖为每次唯一目录，
+         彻底规避"已存在且被锁"的文件）。验证完测试后移除此 profile 与这些目录。 -->
+    <profiles>
+        <profile>
+            <id>slice4-clean-build</id>
+            <properties>
+                <slice4.build.dir>target-slice4</slice4.build.dir>
+            </properties>
+            <build>
+                <directory>${project.basedir}/${slice4.build.dir}</directory>
+            </build>
+        </profile>
+    </profiles>
 </project>

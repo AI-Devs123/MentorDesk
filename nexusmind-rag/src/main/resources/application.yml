@@ -8,6 +8,14 @@ nexusmind:
   rag:
     # 索引根目录（相对路径仅用于本地默认；生产应改为绝对/受管数据卷路径）
     index-dir: ./data/lucene_indices
+  rerank:
+    # 总开关：false 时连文件都不加载，直接走纯 RRF 快路径（系统永不阻断）
+    enabled: true
+    # INT8 量化 Cross-Encoder（约 300MB）。生产务必改为受管数据卷绝对路径
+    model-path: ./models/bge-reranker-large-quantized.onnx
+    vocab-path: ./models/vocab.txt
+    # 最大序列长度：限制 CPU 算力与 native 内存穿透
+    max-seq-len: 256
   embedding:
     # 兼容 OpenAI 规范的 /v1/embeddings 端点；留空则通道禁用
     base-url: ""

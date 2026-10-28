@@ -8,6 +8,7 @@ import com.nexusmind.api.rag.service.IHybridSearchService;
 import com.nexusmind.rag.embedding.EmbeddingClient;
 import com.nexusmind.rag.engine.LuceneDualEngineManager;
 import com.nexusmind.rag.fusion.ReciprocalRankFusionService;
+import com.nexusmind.rag.rerank.BgeRerankerService;
 import com.nexusmind.rag.sanitizer.SearchResponseSanitizer;
 import com.nexusmind.rag.security.AgentCollectionRbacGuard;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -46,17 +47,20 @@ public class HybridSearchServiceImpl implements IHybridSearchService {
     private final ReciprocalRankFusionService rrfService;
     private final AgentCollectionRbacGuard rbacGuard;
     private final SearchResponseSanitizer sanitizer;
+    private final BgeRerankerService rerankerService;
 
     public HybridSearchServiceImpl(LuceneDualEngineManager engineManager,
                                   EmbeddingClient embeddingClient,
                                   ReciprocalRankFusionService rrfService,
                                   AgentCollectionRbacGuard rbacGuard,
-                                  SearchResponseSanitizer sanitizer) {
+                                  SearchResponseSanitizer sanitizer,
+                                  BgeRerankerService rerankerService) {
         this.engineManager = engineManager;
         this.embeddingClient = embeddingClient;
         this.rrfService = rrfService;
         this.rbacGuard = rbacGuard;
         this.sanitizer = sanitizer;
+        this.rerankerService = rerankerService;
     }
 
     @Override
@@ -78,15 +82,31 @@ public class HybridSearchServiceImpl implements IHybridSearchService {
                     engineManager.searchDense(request.collection(), queryVector, topK);
 
             // 3. RRF 融合（修正点：4 参签名，collection 在前，供覆盖度统计与路由一致性）
+            //    慢路径精排就绪时，粗排漏斗收窄到 Top-8（Cross-Encoder 仅对少量候选打分，控时延）；
+            //    否则（未开启 / 模型不可用）漏斗保持 fusedTopN，纯净返回。两者绑定避免「重排降级却少返回」。
+            boolean rerankReady = request.enableRerank() && rerankerService.isAvailable();
+            int rrfCandidatesLimit = rerankReady ? 8 : fusedTopN;
             List<FusedCandidate> fused =
-                    rrfService.fuse(request.collection(), denseHits, sparseHits, fusedTopN);
+                    rrfService.fuse(request.collection(), denseHits, sparseHits, rrfCandidatesLimit);
+
+            // 4. 慢路径 Cross-Encoder 精排（可选）；快路径直接采用 RRF 结果
+            List<FusedCandidate> finalCandidates;
+            if (rerankReady) {
+                long rerankStart = System.currentTimeMillis();
+                finalCandidates = rerankerService.rerank(request.query(), fused, fusedTopN);
+                log.info("[HybridSearch] Cross-Encoder 精排完成，粗排候选数={}, 输出数={}, 耗时={}ms",
+                        fused.size(), finalCandidates.size(), (System.currentTimeMillis() - rerankStart));
+            } else {
+                finalCandidates = fused;
+            }
 
             long elapsed = System.currentTimeMillis() - start;
-            log.info("[HybridSearch] query='{}', collection='{}', sparseHits={}, denseHits={}, fusedCount={}, elapsed={}ms",
-                    request.query(), request.collection(), sparseHits.size(), denseHits.size(), fused.size(), elapsed);
+            log.info("[HybridSearch] query='{}', collection='{}', sparseHits={}, denseHits={}, fusedCount={}, rerank={}, elapsed={}ms",
+                    request.query(), request.collection(), sparseHits.size(), denseHits.size(),
+                    fused.size(), rerankReady, elapsed);
 
-            // 4. 响应脱敏：阻断 PII 经 Triple 返回网关 / 前端
-            List<FusedCandidate> sanitized = sanitizer.sanitize(fused);
+            // 5. 响应脱敏：无论快/慢路径，最终候选都要过 PII 脱敏，阻断经 Triple 逃逸（切片 3 P0 修复不得被绕过）
+            List<FusedCandidate> sanitized = sanitizer.sanitize(finalCandidates);
             return new HybridSearchResponse(request.query(), request.collection(), elapsed, sanitized);
         } catch (Exception e) {
             log.error("[HybridSearch] 执行异常", e);
