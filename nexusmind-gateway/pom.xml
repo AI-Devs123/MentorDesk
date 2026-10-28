@@ -62,6 +62,13 @@
             <artifactId>redisson-spring-boot-starter</artifactId>
             <version>3.30.0</version>
         </dependency>
+
+        <!-- 测试（WebTestClient / Mockito / JUnit） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

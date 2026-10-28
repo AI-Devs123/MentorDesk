@@ -3,3 +3,17 @@ nexusmind:
     index-dir: target/nexusmind-rag-test-indices
   embedding:
     mock: true
+
+# 测试环境不连 Nacos：registry 置 N/A + 关闭注册/订阅，Triple 协议端口随机(-1)。
+# @DubboService 仍会注册为 Spring Bean（供 @Autowired IHybridSearchService 进程内直调），
+# 仅不向注册中心导出，避免单机无 Nacos 时上下文启动失败。
+dubbo:
+  registry:
+    address: N/A
+    register: false
+    subscribe: false
+    check: false
+  protocol:
+    name: tri
+    port: -1
+

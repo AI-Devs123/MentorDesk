@@ -19,16 +19,40 @@
     </properties>
 
     <dependencies>
-        <!-- API 契约（Rag DTO） -->
+        <!-- API 契约（Rag DTO + IHybridSearchService） -->
         <dependency>
             <groupId>com.nexusmind</groupId>
             <artifactId>nexusmind-api</artifactId>
+        </dependency>
+
+        <!-- 内部安全模块（AgentRbacContext / AgentRole / 现有 AgentRbacDubboFilter 密钥） -->
+        <dependency>
+            <groupId>com.nexusmind</groupId>
+            <artifactId>nexusmind-security</artifactId>
         </dependency>
 
         <!-- Spring Boot 核心 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Dubbo Spring Boot Starter（导出 Triple 服务） -->
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Nacos 注册中心 -->
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo-registry-nacos</artifactId>
+        </dependency>
+
+        <!-- Dubbo Triple 协议 -->
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo-rpc-triple</artifactId>
         </dependency>
 
         <!-- WebClient：EmbeddingClient 调用 OpenAI 规范 /v1/embeddings -->

@@ -15,3 +15,15 @@ nexusmind:
     model: bge-small-zh-v1.5
     # 显式开启后才允许无端点时的确定性伪向量降级（仅测试/演示用）
     mock: false
+
+dubbo:
+  application:
+    name: nexusmind-rag
+    qos-enable: false
+  registry:
+    address: nacos://localhost:8848
+  # 三服务端口各有专职，避免互撞：
+  #   supervisor 50051 / agent-workers 50052 / gateway 50053 / rag 50054
+  protocol:
+    name: tri
+    port: 50054
