@@ -15,6 +15,7 @@
         <module>nexusmind-agent-workers</module>
         <module>nexusmind-supervisor</module>
         <module>nexusmind-gateway</module>
+        <module>nexusmind-rag</module>
     </modules>
 
     <properties>

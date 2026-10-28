@@ -1,0 +1,5 @@
+nexusmind:
+  rag:
+    index-dir: target/nexusmind-rag-test-indices
+  embedding:
+    mock: true

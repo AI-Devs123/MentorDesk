@@ -52,7 +52,7 @@ class FastHttpFetcherTest {
         server.createContext("/page", exchange -> {
             byte[] body = "<html><body><h1>Hello NexusMind</h1></body></html>"
                     .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
+            exchange.getResponseHeaders().add("RagApplicationContent-Type", "text/html; charset=utf-8");
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(body);

@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: nexusmind-rag
+  main:
+    web-application-type: none
+
+nexusmind:
+  rag:
+    # 索引根目录（相对路径仅用于本地默认；生产应改为绝对/受管数据卷路径）
+    index-dir: ./data/lucene_indices
+  embedding:
+    # 兼容 OpenAI 规范的 /v1/embeddings 端点；留空则通道禁用
+    base-url: ""
+    api-key: ""
+    model: bge-small-zh-v1.5
+    # 显式开启后才允许无端点时的确定性伪向量降级（仅测试/演示用）
+    mock: false
