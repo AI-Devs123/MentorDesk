@@ -150,5 +150,27 @@ class HttpLfTracingClientTest {
         noop.trace("t", "n", null, null);
         noop.spanAndClose("t", "s", "n", "i", "o", 1L, 2L, "DEFAULT");
         noop.generationAndClose("t", "g", "llm:x", "x", "p", "c", TokenUsage.ZERO, 1L, 2L);
+        // 切片 4 新增的 score 默认方法在 NoOp 上也必须是安全 no-op
+        noop.score("t", null, "quality:journal", 0.8, "ok");
+    }
+
+    @Test
+    @DisplayName("score 事件: score.create 上报 value，且 best-effort 不抛异常")
+    void scoreEventEmitted() throws Exception {
+        // 本测试只发 1 个 score 事件，重设 latch 避免等待超时
+        latch = new CountDownLatch(1);
+        HttpLfTracingClient c = client();
+        c.score("trace-s", null, "quality:journal", 0.82, "结构清晰");
+
+        latch.await(5, TimeUnit.SECONDS);
+        assertEquals(1, capturedBodies.size(), "score 应产生 1 个上报事件");
+        JsonNode root = mapper.readTree(capturedBodies.get(0));
+        JsonNode ev = root.get("batch").get(0);
+        assertEquals("score.create", ev.get("type").asText());
+        JsonNode body = ev.get("body");
+        assertEquals("trace-s", body.get("traceId").asText());
+        assertEquals("quality:journal", body.get("name").asText());
+        assertEquals(0.82, body.get("value").asDouble(), 1e-9);
+        assertEquals("结构清晰", body.get("comment").asText());
     }
 }

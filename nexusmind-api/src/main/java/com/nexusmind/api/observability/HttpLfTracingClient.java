@@ -130,6 +130,21 @@ public class HttpLfTracingClient implements LfTracingClient {
         emit("generation.update", traceId, update);
     }
 
+    @Override
+    public void score(String traceId, String observationId, String name, double value, String comment) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("traceId", traceId);
+        if (observationId != null) {
+            body.put("observationId", observationId);
+        }
+        body.put("name", name);
+        body.put("value", value);
+        if (comment != null) {
+            body.put("comment", comment);
+        }
+        emit("score.create", traceId, body);
+    }
+
     private static String iso(long epochMillis) {
         return Instant.ofEpochMilli(epochMillis).toString();
     }

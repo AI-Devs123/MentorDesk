@@ -2,6 +2,7 @@ package com.nexusmind.supervisor.evolution;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nexusmind.api.quality.JudgeResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,8 +33,10 @@ public class EvolutionScanRepository {
     private static final Logger log = LoggerFactory.getLogger(EvolutionScanRepository.class);
     private static final String KEY_PREFIX = "nexusmind:evolution:";
     private static final String LINK_PREFIX = "nexusmind:knowledge-link:";
+    private static final String QUALITY_PREFIX = "nexusmind:quality:";
     private static final long TTL_SECONDS = 86_400L;       // 进化扫描态保留 1 天
     private static final long LINK_TTL_SECONDS = 604_800L;  // 关联点保留 7 天
+    private static final long QUALITY_TTL_SECONDS = 604_800L; // 质量分保留 7 天
 
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
@@ -111,6 +114,42 @@ public class EvolutionScanRepository {
         } catch (Exception e) {
             log.warn("❌ 知识关联点读取失败(非阻断): newDocId={}, error={}", newDocId, e.getMessage());
             return Collections.emptyList();
+        }
+    }
+
+    // ── 切片 4：质量评分（独立 key，与扫描态解耦，异步落库零回归） ──
+
+    /**
+     * 持久化一次质量评测结果（切片 4）。使用独立 key，不触碰 EvolutionScanState 既有契约。
+     * taskId / result 为空或 Redis 未注入时静默跳过。
+     */
+    public void saveQuality(String taskId, JudgeResult result) {
+        if (redisTemplate == null || taskId == null || result == null) {
+            return;
+        }
+        try {
+            String key = QUALITY_PREFIX + taskId;
+            redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(result),
+                    QUALITY_TTL_SECONDS, TimeUnit.SECONDS);
+            log.debug("✅ 质量分已持久化: key={}, score={}", key, result.score());
+        } catch (Exception e) {
+            log.warn("❌ 质量分持久化失败(非阻断): task={}, error={}", taskId, e.getMessage());
+        }
+    }
+
+    /**
+     * 读取某任务的质量评测结果（切片 4）。无 Redis / 无记录返回 null。
+     */
+    public JudgeResult loadQuality(String taskId) {
+        if (redisTemplate == null || taskId == null) {
+            return null;
+        }
+        try {
+            String json = redisTemplate.opsForValue().get(QUALITY_PREFIX + taskId);
+            return json == null ? null : objectMapper.readValue(json, JudgeResult.class);
+        } catch (Exception e) {
+            log.warn("❌ 质量分读取失败(非阻断): task={}, error={}", taskId, e.getMessage());
+            return null;
         }
     }
 }

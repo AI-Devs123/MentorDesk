@@ -1,6 +1,9 @@
 package com.nexusmind.supervisor.evolution;
 
 import com.nexusmind.api.dto.CodeAnalysisProgress;
+import com.nexusmind.api.quality.IQualityJudgeService;
+import com.nexusmind.api.quality.JudgeRequest;
+import com.nexusmind.api.quality.JudgeResult;
 import com.nexusmind.api.rag.dto.FusedCandidate;
 import com.nexusmind.api.rag.dto.HybridSearchRequest;
 import com.nexusmind.api.rag.dto.HybridSearchResponse;
@@ -10,6 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -143,9 +147,54 @@ class KnowledgeEvolutionServiceTest {
         assertEquals(0, callCount.get(), "禁用时不应发起任何检索");
     }
 
-    /** 内存版扫描态仓储，仅用于测试断言（不依赖 Redis）。 */
+    // ── 切片 4：内联质量评测（非阻塞、可降级） ──
+
+    @Test
+    void onTaskCompleted_whenJudgeServicePresent_savesQualityScore() {
+        IHybridSearchService mock = req -> new HybridSearchResponse(req.query(), req.collection(), 5L, List.of());
+        IQualityJudgeService judge = req -> new JudgeResult(0.77,
+                Map.of("coherence", 0.8), "结构清晰", "test-model");
+
+        InMemoryScanRepository repo = new InMemoryScanRepository();
+        service.setHybridSearchService(mock);
+        service.setEvolutionExecutor(DIRECT);
+        service.setScanRepository(repo);
+        service.setJudgeService(judge);
+        service.setEnabled(true);
+
+        service.onTaskCompleted(TaskCompletionEvent.forJournal("今日突破：搞懂了 RRF 融合"));
+
+        // 扫描态仍正常落盘
+        assertNotNull(repo.last(), "扫描态应落 Redis 扫描态");
+        assertEquals("journal", repo.last().collection());
+        // 切片 4：质量分经独立 key 落库（DIRECT 执行器下 judge 同步完成）
+        assertNotNull(repo.lastQuality(), "应触发质量评分并落库");
+        assertEquals(0.77, repo.lastQuality().score(), 1e-9, "质量分应与 judge 返回一致");
+        assertEquals("test-model", repo.lastQuality().model());
+    }
+
+    @Test
+    void onTaskCompleted_whenJudgeServiceNull_skipsQualityAndDoesNotThrow() {
+        IHybridSearchService mock = req -> new HybridSearchResponse(req.query(), req.collection(), 3L, List.of());
+        InMemoryScanRepository repo = new InMemoryScanRepository();
+
+        service.setHybridSearchService(mock);
+        service.setEvolutionExecutor(DIRECT);
+        service.setScanRepository(repo);
+        service.setJudgeService(null); // 显式置空：远程评测服务未就绪
+        service.setEnabled(true);
+
+        assertDoesNotThrow(() ->
+                service.onTaskCompleted(TaskCompletionEvent.forJournal("content")));
+        assertNotNull(repo.last(), "扫描态仍应落盘");
+        // judgeService 为 null 时完全跳过质量评测，绝不抛异常
+        assertEquals(null, repo.lastQuality(), "judgeService 为空时不应产生质量分");
+    }
+
+    /** 内存版扫描态仓储，仅用于测试断言（不依赖 Redis）。扩展捕获 quality 落库。 */
     static class InMemoryScanRepository extends EvolutionScanRepository {
         private EvolutionScanState last;
+        private JudgeResult lastQuality;
 
         InMemoryScanRepository() {
             super(new com.fasterxml.jackson.databind.ObjectMapper());
@@ -156,8 +205,17 @@ class KnowledgeEvolutionServiceTest {
             this.last = state;
         }
 
+        @Override
+        public void saveQuality(String taskId, JudgeResult result) {
+            this.lastQuality = result;
+        }
+
         EvolutionScanState last() {
             return last;
+        }
+
+        JudgeResult lastQuality() {
+            return lastQuality;
         }
     }
 }

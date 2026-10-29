@@ -1,5 +1,10 @@
 package com.nexusmind.supervisor.evolution;
 
+import com.nexusmind.api.observability.LfTracingClient;
+import com.nexusmind.api.observability.LfTraceContext;
+import com.nexusmind.api.quality.IQualityJudgeService;
+import com.nexusmind.api.quality.JudgeRequest;
+import com.nexusmind.api.quality.JudgeResult;
 import com.nexusmind.api.rag.dto.FusedCandidate;
 import com.nexusmind.api.rag.dto.HybridSearchRequest;
 import com.nexusmind.api.rag.dto.HybridSearchResponse;
@@ -63,6 +68,22 @@ public class KnowledgeEvolutionService {
     @Qualifier("evolutionExecutor")
     private Executor evolutionExecutor;
 
+    /**
+     * 远程引用 agent-workers 的内联质量评测服务（切片 4）。
+     * 关键：{@code check=false} 使 agent-workers 未就绪时 supervisor 仍可启动；
+     * 评分失败/缺失时主链路零感知（best-effort 范式）。
+     */
+    @DubboReference(protocol = "tri", version = "1.0.0", check = false,
+            parameters = {"serialization=fastjson2"})
+    private IQualityJudgeService judgeService;
+
+    /**
+     * 可选的 Langfuse 探针（切片 3）。评分结果作为 trace 的 score 观测，
+     * 缺失或关闭时完全跳过（{@code required=false} 降级）。
+     */
+    @Autowired(required = false)
+    private LfTracingClient tracingClient;
+
     @Value("${nexusmind.evolution.enabled:true}")
     private boolean enabled = true;
 
@@ -83,11 +104,13 @@ public class KnowledgeEvolutionService {
             log.debug("[EVOLUTION_SCAN] 已禁用，跳过: task={}", event.taskId());
             return;
         }
+        // 捕获切面线程上的 traceId（LangfuseTraceAspect 已 set），供后续非阻塞评分上报 score 使用
+        final String traceId = LfTraceContext.getTraceId();
         // 无虚拟线程执行器时退化为同步直跑（保证在最小化环境也能验证通路）
         Executor ex = (evolutionExecutor != null) ? evolutionExecutor : (r -> r.run());
         CompletableFuture.runAsync(() -> {
             try {
-                scan(event);
+                scan(event, traceId, ex);
             } catch (Exception e) {
                 log.warn("[EVOLUTION_SCAN] 异步扫描异常(非阻断): task={}, error={}",
                         event.taskId(), e.getMessage());
@@ -97,8 +120,11 @@ public class KnowledgeEvolutionService {
 
     /**
      * 执行一次相似度探测 + 关联点抽取（同步逻辑，由 {@link #onTaskCompleted} 调度）。
+     *
+     * @param traceId 上游编排切面注入的 Langfuse traceId（可能为空，仅用于 score 上报）
+     * @param ex      异步执行器（judge 任务复用，避免阻塞主链路）
      */
-    void scan(TaskCompletionEvent event) {
+    void scan(TaskCompletionEvent event, String traceId, Executor ex) {
         try {
             // 必须在发起 RPC 的当前线程设置角色 attachment（RpcContext 为 ThreadLocal）
             AgentRbacContext.setCurrentAgent("supervisor");
@@ -144,12 +170,48 @@ public class KnowledgeEvolutionService {
                         event.producedContent(), count, topDocId, topScore,
                         associations, now));
             }
+
+            // 切片 4：扫描完成后，非阻塞提交一次内联质量评分（复用同一 executor，绝不阻塞主链路）
+            if (judgeService != null && event.producedContent() != null
+                    && !event.producedContent().isBlank()) {
+                final String content = event.producedContent();
+                final String taskType = mapTaskType(event.agentRole());
+                final String taskId = event.taskId();
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        JudgeResult jr = judgeService.judge(new JudgeRequest(taskType, content, null, null));
+                        if (scanRepository != null) {
+                            scanRepository.saveQuality(taskId, jr);
+                        }
+                        if (tracingClient != null && traceId != null) {
+                            tracingClient.score(traceId, null, "quality:" + taskType,
+                                    jr.score(), jr.rationale());
+                        }
+                    } catch (Exception e) {
+                        log.warn("[QUALITY_JUDGE] 非阻断评分失败: task={}, err={}",
+                                taskId, e.getMessage());
+                    }
+                }, ex);
+            }
         } catch (Exception e) {
             log.warn("[EVOLUTION_SCAN] 检索探测失败(非阻断): task={}, error={}",
                     event.taskId(), e.getMessage());
         } finally {
             AgentRbacContext.clearContext();
         }
+    }
+
+    /**
+     * 将 Agent 角色映射为质量评测的 taskType（驱动 judge rubric 选择）。
+     */
+    private static String mapTaskType(String agentRole) {
+        return switch (agentRole == null ? "" : agentRole) {
+            case "codeAgent" -> "code";
+            case "webCurator" -> "web_kb";
+            case "tutorAgent" -> "tutor";
+            case "journalAgent" -> "journal";
+            default -> "general";
+        };
     }
 
     /**
@@ -237,5 +299,15 @@ public class KnowledgeEvolutionService {
 
     void setRankWindow(int w) {
         this.rankWindow = w;
+    }
+
+    /** 测试注入点：内联质量评测服务（null 时 judge 完全跳过）。 */
+    void setJudgeService(IQualityJudgeService s) {
+        this.judgeService = s;
+    }
+
+    /** 测试注入点：Langfuse 探针（null 时 score 上报跳过）。 */
+    void setTracingClient(LfTracingClient c) {
+        this.tracingClient = c;
     }
 }

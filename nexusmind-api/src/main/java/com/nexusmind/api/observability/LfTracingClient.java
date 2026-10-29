@@ -29,6 +29,22 @@ public interface LfTracingClient {
                             String model, String prompt, String completion,
                             TokenUsage usage, long startTimeMs, long endTimeMs);
 
+    /**
+     * 给某条 trace / observation 打一个 0~1 的质量分（切片 4 质量评测观测）。
+     *
+     * <p>{@code observationId} 为 null 时直接挂到 trace 根。默认 no-op，子类可按需覆盖——
+     * 因此 {@link NoOpLfTracingClient} 无需改动即可继承安全的空实现。
+     *
+     * @param traceId       所属 trace
+     * @param observationId 关联的观察点（span/generation id），可空
+     * @param name          分数名（如 {@code quality:journal}）
+     * @param value         0~1 分值
+     * @param comment       备注（如评分理由）
+     */
+    default void score(String traceId, String observationId, String name, double value, String comment) {
+        // no-op default；NoOp / 未实现的客户端无需改动
+    }
+
     /** true 表示真实上报（HTTP），false 表示 NoOp 降级。 */
     default boolean isEnabled() {
         return true;
