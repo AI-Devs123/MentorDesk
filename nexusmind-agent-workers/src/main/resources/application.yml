@@ -29,3 +29,12 @@ logging:
     root: INFO
     com.nexusmind: DEBUG
     org.apache.dubbo: WARN
+
+# 切片 3：LLMClient 的 Langfuse 在线可观测（零外部 SDK 依赖，@Value 本地构建，非 @Autowired）。
+# 默认关闭——enabled:false 或 host 为空时 LLMClient 内部使用 NoOpLfTracingClient，绝不发起上报。
+observability:
+  langfuse:
+    enabled: ${OBS_LANGFUSE_ENABLED:false}
+    host: ${OBS_LANGFUSE_HOST:}
+    public-key: ${OBS_LANGFUSE_PUBLIC_KEY:}
+    secret-key: ${OBS_LANGFUSE_SECRET_KEY:}

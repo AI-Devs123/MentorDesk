@@ -36,3 +36,12 @@ dubbo:
 # 未配置时使用 @Value 默认值（api-key 为空 → 自动降级 Mock，与 sk-test 行为一致）。
 # 日记落盘基准目录由 SandboxPathValidator 硬编码为 data/nexusmind/sandbox/journals
 # （相对于进程工作目录），此处同样不配置 storage-path，避免死配置。
+
+# 切片 3：Langfuse 在线可观测（AOP 切面驱动，零外部 SDK 依赖）。
+# 默认关闭——只有显式 enabled:true 且 host 非空才真实上报 HTTP，否则 NoOp 降级，业务零侵入。
+observability:
+  langfuse:
+    enabled: ${OBS_LANGFUSE_ENABLED:false}
+    host: ${OBS_LANGFUSE_HOST:}
+    public-key: ${OBS_LANGFUSE_PUBLIC_KEY:}
+    secret-key: ${OBS_LANGFUSE_SECRET_KEY:}

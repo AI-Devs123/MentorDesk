@@ -18,7 +18,19 @@
             <groupId>org.apache.dubbo</groupId>
             <artifactId>dubbo</artifactId>
         </dependency>
-        
+
+        <!-- JSON 序列化：内置 Langfuse 轻量客户端(HttpLfTracingClient)依赖，BOM 已管理版本 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- SLF4J 日志：LfTraceContext 等共享探针代码依赖 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
         <!-- Protocol Buffers 支持 -->
         <dependency>
             <groupId>com.google.protobuf</groupId>
