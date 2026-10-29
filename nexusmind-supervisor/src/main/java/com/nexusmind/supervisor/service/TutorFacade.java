@@ -7,7 +7,10 @@ import com.nexusmind.api.dto.TutorReflectionPrompt;
 import com.nexusmind.api.service.IJournalReviewService;
 import com.nexusmind.api.service.ITutorService;
 import com.nexusmind.security.rbac.AgentRbacContext;
+import com.nexusmind.supervisor.evolution.KnowledgeEvolutionService;
+import com.nexusmind.supervisor.evolution.TaskCompletionEvent;
 import org.apache.dubbo.config.annotation.DubboReference;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,9 +35,19 @@ public class TutorFacade {
     private ITutorService tutorService;
 
     /**
+     * 切片 8-1：知识自进化后置钩子。苏格拉底反思包生成后异步发起相似度扫描，非阻塞返回。
+     */
+    @Autowired(required = false)
+    private KnowledgeEvolutionService evolutionService;
+
+    /**
      * 生成苏格拉底启发反思包 (跨进程 Dubbo 调用，执行在 agent-workers)
      */
     public TutorReflectionPrompt generateSocraticReflection(String symptom, String rootCause, String domain) {
-        return tutorService.generateSocraticReflection(symptom, rootCause, domain);
+        TutorReflectionPrompt prompt = tutorService.generateSocraticReflection(symptom, rootCause, domain);
+        if (evolutionService != null) {
+            evolutionService.onTaskCompleted(TaskCompletionEvent.forTutor(prompt));
+        }
+        return prompt;
     }
 }

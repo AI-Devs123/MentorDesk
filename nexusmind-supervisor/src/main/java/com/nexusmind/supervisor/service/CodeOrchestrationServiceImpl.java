@@ -5,10 +5,13 @@ import com.nexusmind.api.dto.CodeAnalysisRequest;
 import com.nexusmind.api.service.ICodeAnalysisService;
 import com.nexusmind.api.service.ICodeOrchestrationService;
 import com.nexusmind.security.rbac.AgentSecured;
+import com.nexusmind.supervisor.evolution.KnowledgeEvolutionService;
+import com.nexusmind.supervisor.evolution.TaskCompletionEvent;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -36,6 +39,10 @@ public class CodeOrchestrationServiceImpl implements ICodeOrchestrationService {
     @DubboReference(timeout = 60000)
     private ICodeAnalysisService codeAnalysisService;
 
+    /** 切片 8-1：知识自进化后置钩子（required=false，缺失时不阻断编排）。 */
+    @Autowired(required = false)
+    private KnowledgeEvolutionService evolutionService;
+
     @AgentSecured(allowedAgents = {"supervisor", "codeAgent"})
     @Override
     public List<CodeAnalysisProgress> orchestrateCodeAnalysis(CodeAnalysisRequest request) {
@@ -45,7 +52,12 @@ public class CodeOrchestrationServiceImpl implements ICodeOrchestrationService {
         // 1. 下发到 CodeAgent（跨进程 Dubbo 调用，agent-workers 进程内执行 AST 遍历）
         List<CodeAnalysisProgress> frames = codeAnalysisService.analyzeProject(request);
 
-        // 2. 编排层可在此扇出到 Tutor/Journal 做跨 Agent 协同（后续切片扩展点）
+        // 2. 切片 8-1：知识自进化后置钩子 —— 代码分析完成后异步发起相似度扫描，非阻塞返回
+        if (evolutionService != null) {
+            evolutionService.onTaskCompleted(TaskCompletionEvent.forCode(request.taskId(), frames));
+        }
+
+        // 3. 编排层可在此扇出到 Tutor/Journal 做跨 Agent 协同（后续切片扩展点）
         log.info("[CodeOrchestration] 编排完成: taskId={}, 共 {} 帧", request.taskId(), frames.size());
         return frames;
     }

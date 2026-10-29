@@ -2,7 +2,10 @@ package com.nexusmind.supervisor.service;
 
 import com.nexusmind.api.dto.DataPayload;
 import com.nexusmind.api.service.IJournalReviewService;
+import com.nexusmind.supervisor.evolution.KnowledgeEvolutionService;
+import com.nexusmind.supervisor.evolution.TaskCompletionEvent;
 import org.apache.dubbo.config.annotation.DubboReference;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -35,6 +38,13 @@ public class JournalReviewFacade {
     private IJournalReviewService journalReviewService;
 
     /**
+     * 切片 8-1：知识自进化后置钩子。任务成功落盘后 fire-and-forget 发起相似度扫描，
+     * 不阻塞本方法返回（非阻塞 SSE 链路）。钩子内部对所有异常 best-effort 容错。
+     */
+    @Autowired(required = false)
+    private KnowledgeEvolutionService evolutionService;
+
+    /**
      * 审查日记并落盘
      * 委托给 agent-workers 的实现（跨进程 Dubbo 调用）
      *
@@ -42,6 +52,10 @@ public class JournalReviewFacade {
      * @return 包含条目、路径、统计信息的数据载体
      */
     public DataPayload reviewAndPersist(String rawContent) {
-        return journalReviewService.reviewAndPersist(rawContent);
+        DataPayload payload = journalReviewService.reviewAndPersist(rawContent);
+        if (evolutionService != null) {
+            evolutionService.onTaskCompleted(TaskCompletionEvent.forJournal(rawContent));
+        }
+        return payload;
     }
 }

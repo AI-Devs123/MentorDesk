@@ -8,10 +8,13 @@ import com.nexusmind.api.dto.WebCurateResult;
 import com.nexusmind.api.service.IWebCuratorOrchestrationService;
 import com.nexusmind.api.service.IWebCuratorService;
 import com.nexusmind.security.rbac.AgentSecured;
+import com.nexusmind.supervisor.evolution.KnowledgeEvolutionService;
+import com.nexusmind.supervisor.evolution.TaskCompletionEvent;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -45,6 +48,10 @@ public class WebCuratorOrchestrationServiceImpl implements IWebCuratorOrchestrat
     /** Dubbo 消费者引用 agent-workers 的 WebCuratorAgent（公共契约接口）。 */
     @DubboReference(timeout = 120000)
     private IWebCuratorService webCuratorService;
+
+    /** 切片 8-1：知识自进化后置钩子（required=false，缺失时不阻断编排）。 */
+    @Autowired(required = false)
+    private KnowledgeEvolutionService evolutionService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -104,6 +111,11 @@ public class WebCuratorOrchestrationServiceImpl implements IWebCuratorOrchestrat
                         result.sandboxSavedPath(), result.fileSizeBytes(),
                         result.renderJsUsed() ? "Playwright" : "FastHttp"),
                 stagedJson));
+
+        // 阶段 4.5：切片 8-1 知识自进化后置钩子 —— 网页萃取落盘后异步发起相似度扫描，非阻塞
+        if (evolutionService != null) {
+            evolutionService.onTaskCompleted(TaskCompletionEvent.forWebCurator(taskId, result));
+        }
 
         // 阶段 5：完成（携带完整结果，供前端 WebCurateResultCard 一次渲染）
         frames.add(WebCurateProgress.withPayload(taskId, "COMPLETED", "Supervisor",
