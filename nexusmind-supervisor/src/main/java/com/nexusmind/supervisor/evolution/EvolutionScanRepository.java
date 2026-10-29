@@ -1,5 +1,6 @@
 package com.nexusmind.supervisor.evolution;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,21 +8,32 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 进化扫描态仓储（切片 1）。
+ * 进化扫描态仓储（切片 1）+ 关联点独立索引（切片 2）。
  *
  * <p>镜像 {@code com.nexusmind.supervisor.execution.SnapshotRepository} 的实现风格：
  * 用 {@link StringRedisTemplate} + Spring 托管的 {@link ObjectMapper} 持久化 JSON，
  * 全程 null 安全（Redis 未注入或序列化失败仅告警，绝不影响主编排链路）。
+ *
+ * <p>切片 2 新增两类 key：
+ * <ul>
+ *   <li>{@code nexusmind:evolution:<taskId>} —— 扫描态（含关联点），TTL 1 天；</li>
+ *   <li>{@code nexusmind:knowledge-link:<newDocId>} —— 以新资产 docId 为索引的关联点，
+ *       供「下一任务上下文预加载」反查（TTL 7 天）。</li>
+ * </ul>
  */
 @Repository
 public class EvolutionScanRepository {
 
     private static final Logger log = LoggerFactory.getLogger(EvolutionScanRepository.class);
     private static final String KEY_PREFIX = "nexusmind:evolution:";
-    private static final long TTL_SECONDS = 86_400L; // 进化扫描态保留 1 天
+    private static final String LINK_PREFIX = "nexusmind:knowledge-link:";
+    private static final long TTL_SECONDS = 86_400L;       // 进化扫描态保留 1 天
+    private static final long LINK_TTL_SECONDS = 604_800L;  // 关联点保留 7 天
 
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
@@ -32,6 +44,8 @@ public class EvolutionScanRepository {
     public EvolutionScanRepository(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
+
+    // ── 扫描态（含关联点） ──
 
     public void save(EvolutionScanState state) {
         if (redisTemplate == null) {
@@ -58,6 +72,45 @@ public class EvolutionScanRepository {
         } catch (Exception e) {
             log.warn("❌ 进化扫描态读取失败(非阻断): task={}, error={}", taskId, e.getMessage());
             return null;
+        }
+    }
+
+    // ── 关联点独立索引（切片 2 回灌预加载） ──
+
+    /**
+     * 以新资产 docId 为索引落盘关联点，供下次同主题任务反查。
+     * newDocId 为 null（journal/tutor/code 任务常无稳定 docId）时静默跳过。
+     */
+    public void saveLinks(String newDocId, List<KnowledgeAssociation> links) {
+        if (redisTemplate == null || newDocId == null || links == null || links.isEmpty()) {
+            return;
+        }
+        try {
+            String key = LINK_PREFIX + newDocId;
+            redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(links),
+                    LINK_TTL_SECONDS, TimeUnit.SECONDS);
+            log.debug("✅ 知识关联点已索引: key={}, size={}", key, links.size());
+        } catch (Exception e) {
+            log.warn("❌ 知识关联点索引失败(非阻断): newDocId={}, error={}", newDocId, e.getMessage());
+        }
+    }
+
+    /**
+     * 反查某新资产发现的关联点（下一任务预加载用）。无 Redis 或无记录返回空列表。
+     */
+    public List<KnowledgeAssociation> loadLinksByDocId(String newDocId) {
+        if (redisTemplate == null || newDocId == null) {
+            return Collections.emptyList();
+        }
+        try {
+            String json = redisTemplate.opsForValue().get(LINK_PREFIX + newDocId);
+            if (json == null) {
+                return Collections.emptyList();
+            }
+            return objectMapper.readValue(json, new TypeReference<List<KnowledgeAssociation>>() {});
+        } catch (Exception e) {
+            log.warn("❌ 知识关联点读取失败(非阻断): newDocId={}, error={}", newDocId, e.getMessage());
+            return Collections.emptyList();
         }
     }
 }

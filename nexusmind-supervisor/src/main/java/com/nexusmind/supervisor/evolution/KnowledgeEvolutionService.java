@@ -1,5 +1,6 @@
 package com.nexusmind.supervisor.evolution;
 
+import com.nexusmind.api.rag.dto.FusedCandidate;
 import com.nexusmind.api.rag.dto.HybridSearchRequest;
 import com.nexusmind.api.rag.dto.HybridSearchResponse;
 import com.nexusmind.api.rag.service.IHybridSearchService;
@@ -12,8 +13,11 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 /**
  * 知识自进化服务（切片 1 核心）。
@@ -32,8 +36,9 @@ import java.util.concurrent.Executor;
  *       否则会被 rag 的 {@code AgentRbacDubboFilter} 拒绝。</li>
  * </ul>
  *
- * <p>切片 1 只完成「扫描 + 日志 + Redis 暂存」；切片 2 将在此之上叠加 0.65~0.85 阈值带的
- * 新旧知识关联点抽取与 {@code KNOWLEDGE_LINK} 反哺。
+ * <p>切片 1 完成「扫描 + 日志 + Redis 暂存」；切片 2 在此之上叠加<b>新旧知识关联点抽取</b>
+ * （{@link #extractAssociations}，Rank + bothHit 启发式，绕开无效的 rrfScore 阈值）
+ * 与 {@code KNOWLEDGE_LINK} 回灌。
  */
 @Service
 public class KnowledgeEvolutionService {
@@ -62,6 +67,13 @@ public class KnowledgeEvolutionService {
     private boolean enabled = true;
 
     /**
+     * 关联窗口（切片 2 路径 A）：稠密与稀疏两路 rank 均 ≤ 此值且 bothHit 才视为关联点。
+     * 经 Nacos 下发，便于实测后校准（命中过多→收紧，过少→放宽或切到路径 B rerank）。
+     */
+    @Value("${nexusmind.evolution.rank-window:3}")
+    private int rankWindow = 3;
+
+    /**
      * 任务完成钩子入口（fire-and-forget，非阻塞）。
      *
      * @param event 本次任务完成事件（含产出上下文与目标集合）
@@ -84,7 +96,7 @@ public class KnowledgeEvolutionService {
     }
 
     /**
-     * 执行一次相似度探测（同步逻辑，由 {@link #onTaskCompleted} 调度）。
+     * 执行一次相似度探测 + 关联点抽取（同步逻辑，由 {@link #onTaskCompleted} 调度）。
      */
     void scan(TaskCompletionEvent event) {
         try {
@@ -104,15 +116,33 @@ public class KnowledgeEvolutionService {
                 topScore = resp.candidates().get(0).rrfScore();
             }
 
-            log.info("[EVOLUTION_SCAN] task={}, agent={}, collection={}, 候选命中={}, topDoc={}, topRrf={}, 耗时={}ms",
-                    event.taskId(), event.agentRole(), event.collection(),
-                    count, topDocId, topScore, resp != null ? resp.elapsedMs() : -1);
+            long now = System.currentTimeMillis();
+            // 切片 2：新旧知识关联点抽取（Rank + bothHit 启发式）
+            List<KnowledgeAssociation> associations =
+                    extractAssociations(resp != null ? resp.candidates() : null,
+                            event.newDocId(), event.collection(), now);
+
+            if (associations.isEmpty()) {
+                log.info("[EVOLUTION_SCAN] task={}, agent={}, collection={}, 候选命中={}, topDoc={}, topRrf={}, 关联点=0",
+                        event.taskId(), event.agentRole(), event.collection(),
+                        count, topDocId, topScore);
+            } else {
+                String links = associations.stream()
+                        .map(a -> a.relatedDocId() + "(" + a.relationType() + ",rrf=" + a.rrfScore() + ")")
+                        .collect(Collectors.joining(", "));
+                log.info("[KNOWLEDGE_LINK] task={}, 发现关联点 {} 个: {}",
+                        event.taskId(), associations.size(), links);
+            }
 
             if (scanRepository != null) {
+                // 独立索引：以新资产 docId 反查（供下一任务预加载；newDocId 为 null 时静默跳过）
+                if (event.newDocId() != null && !associations.isEmpty()) {
+                    scanRepository.saveLinks(event.newDocId(), associations);
+                }
                 scanRepository.save(new EvolutionScanState(
                         event.taskId(), event.agentRole(), event.collection(),
                         event.producedContent(), count, topDocId, topScore,
-                        System.currentTimeMillis()));
+                        associations, now));
             }
         } catch (Exception e) {
             log.warn("[EVOLUTION_SCAN] 检索探测失败(非阻断): task={}, error={}",
@@ -120,6 +150,72 @@ public class KnowledgeEvolutionService {
         } finally {
             AgentRbacContext.clearContext();
         }
+    }
+
+    /**
+     * 新旧知识关联点抽取（切片 2 路径 A：Rank + bothHit 启发式）。
+     *
+     * <p><b>为何不用 rrfScore 阈值</b>：{@code FusedCandidate.rrfScore} 仅 ≈ 0~0.033，
+     * 非归一化相似度，原计划的 0.65~0.85 阈值带对它永远不命中。此处改用更稳的信号：
+     * <ol>
+     *   <li>{@code bothHit()} —— 稠密（语义）+ 稀疏（字面）两路都召回，融合质量最可信；</li>
+     *   <li>{@code denseRank ≤ rankWindow 且 sparseRank ≤ rankWindow} —— 两路都进前 N；</li>
+     *   <li>排除与自身 {@code newDocId} 相同的候选，避免自关联。</li>
+     * </ol>
+     * 纯函数、无副作用、零额外推理，异步非阻塞不新增延迟。
+     */
+    List<KnowledgeAssociation> extractAssociations(List<FusedCandidate> candidates,
+                                                   String newDocId, String collection, long discoveredAt) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        List<KnowledgeAssociation> result = new ArrayList<>();
+        for (FusedCandidate c : candidates) {
+            if (!c.bothHit()) {
+                continue; // 仅单路命中，相关性不足信
+            }
+            if (c.denseRank() > rankWindow || c.sparseRank() > rankWindow) {
+                continue; // 任一通道排名超出窗口
+            }
+            if (newDocId != null && newDocId.equals(c.docId())) {
+                continue; // 排除自关联
+            }
+            result.add(KnowledgeAssociation.of(newDocId, c, "BOTH_HIT_TOP" + rankWindow, discoveredAt));
+        }
+        return result;
+    }
+
+    /**
+     * 回灌查询（切片 2 Tutor 回灌用）：基于给定摘要做一次 RRF 扫描并抽取关联点。
+     * best-effort——任何失败返回空列表，绝不拖垮调用方主链路。
+     *
+     * @param querySummary 本次上下文摘要（如 TutorReflectionPrompt.contextSummary）
+     * @param collection   目标集合（默认 journal）
+     * @return 关联点列表（无则空）
+     */
+    public List<KnowledgeAssociation> findRelatedInsights(String querySummary, String collection) {
+        if (!enabled || querySummary == null || querySummary.isBlank()) {
+            return List.of();
+        }
+        try {
+            AgentRbacContext.setCurrentAgent("supervisor");
+            HybridSearchRequest req = new HybridSearchRequest(
+                    querySummary, collection, DEFAULT_TOP_K, DEFAULT_FUSED_TOP_N, false);
+            HybridSearchResponse resp = hybridSearchService.hybridSearch(req);
+            long now = System.currentTimeMillis();
+            return extractAssociations(resp != null ? resp.candidates() : null, null, collection, now);
+        } catch (Exception e) {
+            log.warn("[KNOWLEDGE_LINK] 回灌查询失败(非阻断): query={}, error={}",
+                    querySummary, e.getMessage());
+            return List.of();
+        } finally {
+            AgentRbacContext.clearContext();
+        }
+    }
+
+    /** 回灌查询便捷重载：默认 journal 集合。 */
+    public List<KnowledgeAssociation> findRelatedInsights(String querySummary) {
+        return findRelatedInsights(querySummary, "journal");
     }
 
     // ── 测试注入点（手动构造 + mock，不依赖 Nacos/Dubbo 运行时） ──
@@ -137,5 +233,9 @@ public class KnowledgeEvolutionService {
 
     void setEnabled(boolean b) {
         this.enabled = b;
+    }
+
+    void setRankWindow(int w) {
+        this.rankWindow = w;
     }
 }
