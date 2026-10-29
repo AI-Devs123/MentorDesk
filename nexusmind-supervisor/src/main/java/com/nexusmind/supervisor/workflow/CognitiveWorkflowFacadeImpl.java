@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -57,8 +58,8 @@ public class CognitiveWorkflowFacadeImpl extends DubboCognitiveWorkflowFacadeTri
     /** 任务中断标志: taskId -> isCancelled */
     private static final Map<String, AtomicBoolean> TASK_CANCELLATION_FLAGS = new ConcurrentHashMap<>();
 
-    /** 运行中任务线程: taskId -> Thread (取消时 interrupt) */
-    private static final Map<String, Thread> RUNNING_THREADS = new ConcurrentHashMap<>();
+    /** 运行中任务句柄: taskId -> Future (取消时 future.cancel(true) 可靠中断) */
+    private static final Map<String, Future<?>> RUNNING_FUTURES = new ConcurrentHashMap<>();
 
     /** DAG 执行线程池 (平台线程: JDK 17 基线) */
     private final java.util.concurrent.ExecutorService dagExecutor =
@@ -105,8 +106,7 @@ public class CognitiveWorkflowFacadeImpl extends DubboCognitiveWorkflowFacadeTri
         AtomicBoolean isAborted = new AtomicBoolean(false);
         TASK_CANCELLATION_FLAGS.put(taskId, isAborted);
 
-        dagExecutor.execute(() -> {
-            RUNNING_THREADS.put(taskId, Thread.currentThread());
+        Future<?> future = dagExecutor.submit(() -> {
             try {
                 // Step 1: JournalAgent 三要素抽取 + Append-only 落盘
                 emitProgress(responseObserver, taskId, "JournalAgent", "RUNNING",
