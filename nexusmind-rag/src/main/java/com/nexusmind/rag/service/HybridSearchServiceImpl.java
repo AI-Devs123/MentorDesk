@@ -84,7 +84,9 @@ public class HybridSearchServiceImpl implements IHybridSearchService {
             // 3. RRF 融合（修正点：4 参签名，collection 在前，供覆盖度统计与路由一致性）
             //    慢路径精排就绪时，粗排漏斗收窄到 Top-8（Cross-Encoder 仅对少量候选打分，控时延）；
             //    否则（未开启 / 模型不可用）漏斗保持 fusedTopN，纯净返回。两者绑定避免「重排降级却少返回」。
-            boolean rerankReady = request.enableRerank() && rerankerService.isAvailable();
+            // null 安全：enableRerank 是包装类型（避免 hessian2 反序列化 record 时
+            // "Boolean cannot be assigned to boolean" 缺陷），未携带时按 false 处理
+            boolean rerankReady = Boolean.TRUE.equals(request.enableRerank()) && rerankerService.isAvailable();
             int rrfCandidatesLimit = rerankReady ? 8 : fusedTopN;
             List<FusedCandidate> fused =
                     rrfService.fuse(request.collection(), denseHits, sparseHits, rrfCandidatesLimit);

@@ -7,9 +7,14 @@ nexusmind:
   embedding:
     mock: true
 
-# 测试环境不连 Nacos：registry 置 N/A + 关闭注册/订阅，Triple 协议端口随机(-1)。
+# 测试环境不连 Nacos：registry 置 N/A + 关闭注册/订阅。
 # @DubboService 仍会注册为 Spring Bean（供 @Autowired IHybridSearchService 进程内直调），
-# 仅不向注册中心导出，避免单机无 Nacos 时上下文启动失败。
+# 仅不向注册中心导出。
+# 端口固定 20880（Dubbo 默认安全区间，避开 Windows 排除区间 50000-50059 / 52041-52140）。
+# 各 @SpringBootTest(RagApplication.class) 测试类均已加 @DirtiesContext(AFTER_CLASS)：
+# 因 @EnableDubbo 会让每个上下文都导出同一 IHybridSearchService:1.0.0，
+# 同 JVM 内多个独立上下文会触发 TripleProtocol 的「serviceKey 已存在」冲突，
+# 故每类跑完即销毁上下文、释放 Dubbo 导出，下一类再重建。
 dubbo:
   registry:
     address: N/A
@@ -18,5 +23,5 @@ dubbo:
     check: false
   protocol:
     name: tri
-    port: -1
+    port: 20880
 

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.util.FileSystemUtils;
 
@@ -37,6 +38,7 @@ import java.util.Map;
  */
 @SpringBootTest(classes = RagApplication.class)
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestPropertySource(properties = "nexusmind.rag.index-dir=target/nexusmind-rag-rbac-test-indices")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class HybridSearchRbacIntegrationTest {

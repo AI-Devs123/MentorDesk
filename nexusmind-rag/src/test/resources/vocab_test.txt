@@ -1,0 +1,17 @@
+[PAD]
+[UNK]
+[CLS]
+[SEP]
+hello
+world
+start
+##server
+##s
+##er
+##ver
+the
+中
+国
+文
+##学
+server

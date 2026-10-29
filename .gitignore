@@ -2,10 +2,9 @@
 target/
 # 临时备份目录（本机跑 Maven 时为绕开 safe-delete 重命名 target 产生，非源码）
 target.bak_*/
-# 切片4 构建绕锁临时输出目录（含编译字节码 .class/.jar，非源码，timestamp 可变）
-target-s4*/
-target-slice4/
-target-s4idx*/
+# 构建绕锁临时输出目录（本机 target/ 被外部进程锁住，构建到每次唯一的 target-* 目录；
+# 含编译字节码 .class/.jar，非源码，timestamp 可变）。clean-target profile 用 -Dslice4.build.dir 指定。
+target-*/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup

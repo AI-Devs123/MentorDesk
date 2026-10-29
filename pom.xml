@@ -102,12 +102,14 @@
         </plugins>
     </build>
 
-    <!-- 临时绕过：本机 target/ 被外部进程(文件监视器/Defender)锁住导致资源拷贝 AccessDenied，
-         让所有模块构建到各自的 target-slice4 目录（可用 -Dslice4.build.dir 覆盖为每次唯一目录，
-         彻底规避"已存在且被锁"的文件）。验证完测试后移除此 profile 与这些目录。 -->
+    <!-- 本机 target/ 被外部进程(文件监视器/Defender)锁住导致 resources 拷贝 AccessDenied：
+         已写入一次的文件会被外部持有者锁死，之后覆盖/删除都被拒（rm -rf 目录级可成功）。
+         解法：构建到每次唯一的目录，文件永不预存故永不撞锁。跑测试传
+         -P clean-target -Dslice4.build.dir=target-<模块>-$(date +%s) 即可。
+         注：-Dmaven.build.dir 无效，必须用 pom 级 <directory> 覆盖。 -->
     <profiles>
         <profile>
-            <id>slice4-clean-build</id>
+            <id>clean-target</id>
             <properties>
                 <slice4.build.dir>target-slice4</slice4.build.dir>
             </properties>

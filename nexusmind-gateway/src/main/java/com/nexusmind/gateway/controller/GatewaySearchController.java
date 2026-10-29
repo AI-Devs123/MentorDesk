@@ -47,7 +47,15 @@ public class GatewaySearchController {
     private static final Logger log = LoggerFactory.getLogger(GatewaySearchController.class);
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    @DubboReference(protocol = "tri", version = "1.0.0", check = false)
+    // 切片 5 修复：显式选 fastjson2 序列化（经 parameters 透传，@DubboReference 无直接 serialization 属性）。
+    // 本仓 Triple 契约 DTO（HybridSearchRequest 等）均为 Java record，而 Dubbo 3.2 内置的
+    // hessian2 序列化对 record 支持残缺——服务端反序列化 record 的 boolean/Boolean 分量会抛
+    // HessianFieldException（实测 "Boolean cannot be assigned to 'boolean'"/'java.lang.Boolean'）。
+    // fastjson2 原生支持 record，且协议默认 preferSerialization 已把它列为首选，故此处显式锁定，
+    // 否则网关→rag 的真实 Triple 调用会在生产环境直接 500（该缺陷此前被 @DubboReference(check=false)
+    // 掩盖，切片 5 的端到端测试才首次暴露）。
+    @DubboReference(protocol = "tri", version = "1.0.0", check = false,
+            parameters = {"serialization=fastjson2"})
     private IHybridSearchService hybridSearchService;
 
     /**
