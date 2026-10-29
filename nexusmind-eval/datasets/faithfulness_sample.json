@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "name": "RAG Faithfulness / Contextual Relevance seed set",
+    "description": "切片 5 离线评测种子样本。字段：id, task_type, query, retrieval_context[], actual_output, expected_output(标准答案,供 contextual recall), expected_faithful(人工标注,仅供对照)。",
+    "status": "SEED",
+    "note": "种子样本为手工构造的领域代表性样例，待从切片 3 Langfuse traces / 切片 1~4 真实产出中批量抽取扩充（建议 5~10 条起步，逐步到数百条标注集）。",
+    "dimensions_aligned_with_slice4": ["faithfulness(忠实度)", "contextual_precision(上下文精度)", "contextual_recall(上下文召回)", "answer_relevancy(答案相关度)"]
+  },
+  "cases": [
+    {
+      "id": "fj-01",
+      "task_type": "web_kb",
+      "query": "分布式混合检索里 RRF 的 k 值一般怎么选？",
+      "retrieval_context": [
+        "Reciprocal Rank Fusion (RRF) 通过 score = Σ 1/(k + rank_i) 融合多路召回，k 为平滑常数。",
+        "经验上 k 取 10~60 居多；k 越大，高排名差异被稀释，各路更趋平均。"
+      ],
+      "actual_output": "RRF 的 k 是平滑常数，经验取值多在 10~60 之间，k 越大各路召回越趋平均、排名差异被稀释。",
+      "expected_output": "RRF 用 1/(k+rank) 融合多路召回，k 为平滑常数，常用 10~60，越大越平均。",
+      "expected_faithful": true
+    },
+    {
+      "id": "fj-02",
+      "task_type": "web_kb",
+      "query": "BM25 相比 TF-IDF 主要改进了什么？",
+      "retrieval_context": [
+        "BM25 在 TF-IDF 基础上引入词频饱和函数，避免长文档高频词过度加权。",
+        "BM25 还加入文档长度归一化，抑制长文档天然的高词频优势。"
+      ],
+      "actual_output": "BM25 相比 TF-IDF 引入了词频饱和与文档长度归一化；此外 BM25 是 Google 在 2018 年提出的，已全面替代 TF-IDF。",
+      "expected_output": "BM25 相对 TF-IDF 的改进是词频饱和函数和文档长度归一化。",
+      "expected_faithful": false
+    },
+    {
+      "id": "jr-01",
+      "task_type": "journal",
+      "query": "请根据我的今日复盘生成总结。",
+      "retrieval_context": [
+        "今日记录：上午完成了 RAG 评测方案文档，下午联调 Dubbo 接口遇到序列化问题，最终改用 fastjson2 解决。",
+        "情绪标注：遇到联调阻塞时略有焦虑，解决后转为踏实。"
+      ],
+      "actual_output": "今日突破点在于定位并解决了 Dubbo 接口的序列化问题（改用 fastjson2）；阻碍来自联调期的焦虑，解决后状态回到踏实。",
+      "expected_output": "突破：解决 Dubbo 序列化问题（fastjson2）；阻碍：联调焦虑；情绪由焦虑转踏实。",
+      "expected_faithful": true
+    },
+    {
+      "id": "jr-02",
+      "task_type": "journal",
+      "query": "请根据我的本周复盘生成总结。",
+      "retrieval_context": [
+        "本周记录：完成 3 篇技术文档，参加 2 次评审，周末休息。",
+        "未提及任何健康或作息数据。"
+      ],
+      "actual_output": "本周产出稳定，且你的睡眠质量显著提升是支撑高效产出的关键原因。",
+      "expected_output": "本周完成 3 篇文档 + 2 次评审，周末休息；未记录健康数据。",
+      "expected_faithful": false
+    },
+    {
+      "id": "fj-03",
+      "task_type": "web_kb",
+      "query": "HNSW 索引的 efSearch 参数影响什么？",
+      "retrieval_context": [
+        "HNSW 的 efSearch 控制查询时近邻候选集大小，值越大召回越高、延迟越大。",
+        "efSearch 与构建期 efConstruction 独立，可在查询时动态调整。"
+      ],
+      "actual_output": "efSearch 是查询期的近邻候选集大小，越大召回越高但延迟越大，且可独立于构建参数 efConstruction 动态调整。",
+      "expected_output": "efSearch 控制查询候选集大小，影响召回与延迟权衡，可动态调整，独立于 efConstruction。",
+      "expected_faithful": true
+    }
+  ]
+}

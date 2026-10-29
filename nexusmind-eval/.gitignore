@@ -1,0 +1,16 @@
+# Python / eval module ignores (独立于仓库根 .gitignore，避免污染 Java 构建)
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.deepeval/
+*.egg-info/
+build/
+dist/
+
+# 评测产物（CI artifact，非源码）
+report/*.json
+report/*.html
+report/*.csv
+!report/.gitkeep

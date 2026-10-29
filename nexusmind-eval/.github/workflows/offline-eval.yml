@@ -1,0 +1,42 @@
+name: NexusMind Offline Eval (DeepEval)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每周一 02:17 UTC 跑一次离线评测（低频，不随线上流量放大成本）
+    - cron: "17 2 * * 1"
+
+jobs:
+  offline-eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nexusmind-eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install eval module
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run DeepEval offline evaluation
+        env:
+          OPENAI_API_KEY: ${{ secrets.EVAL_OPENAI_API_KEY }}
+          NEXUSMIND_LLM_BASE_URL: ${{ secrets.EVAL_LLM_BASE_URL }}
+          NEXUSMIND_LLM_API_KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+          NEXUSMIND_LLM_MODEL: ${{ secrets.EVAL_LLM_MODEL }}
+        run: |
+          pytest tests/test_faithfulness.py tests/test_socratic_geval.py
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepeval-report
+          path: nexusmind-eval/report/

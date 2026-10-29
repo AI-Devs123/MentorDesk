@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "name": "Tutor Socratic Depth seed set",
+    "description": "切片 5 G-Eval 评估 Tutor 苏格拉底提问深度。字段：id, task_type(=tutor), input(学生陈述), actual_output(Tutor 提问), rubric, reference_depth_score(人工锚点 0~1)。",
+    "status": "SEED",
+    "note": "维度与切片 4 QualityJudgePrompt.rubricFor('tutor') 对齐：提问深度 / 认知冲突张力 / 引导性。reference_depth_score 不参与自动评分，仅用于离线人工对照。",
+    "dimensions_aligned_with_slice4": ["depth(提问深度)", "cognitive_conflict(认知冲突张力)", "guidance(引导性)"]
+  },
+  "cases": [
+    {
+      "id": "sc-01",
+      "task_type": "tutor",
+      "input": "我觉得我已经很努力了，但成绩就是没起色。",
+      "actual_output": "如果『努力』只是重复同样的方法，那它和『有效努力』的区别在哪里？你最近一次卡住时，具体是哪个环节让你停下来，而不是继续往下走？",
+      "rubric": "提问深度 / 认知冲突张力 / 引导性",
+      "reference_depth_score": 0.9
+    },
+    {
+      "id": "sc-02",
+      "task_type": "tutor",
+      "input": "老师，这道力学题我不会做。",
+      "actual_output": "好，你先告诉我：题目给的四个条件里，哪一个你到现在还没用上？",
+      "rubric": "提问深度 / 认知冲突张力 / 引导性",
+      "reference_depth_score": 0.6
+    },
+    {
+      "id": "sc-03",
+      "task_type": "tutor",
+      "input": "什么是『复利效应』？",
+      "actual_output": "复利效应就是利滚利，本金产生的利息再加入本金继续生息，时间越长增长越快，比如年化 5% 持续 30 年会有很大增长。",
+      "rubric": "提问深度 / 认知冲突张力 / 引导性",
+      "reference_depth_score": 0.15
+    },
+    {
+      "id": "sc-04",
+      "task_type": "tutor",
+      "input": "我觉得上次项目失败纯粹是因为运气太差。",
+      "actual_output": "如果把那次失败拆成『准备 / 执行 / 环境』三步，运气大概占了其中的多少比例？在这三步里，有没有哪一步是你当时其实可以改变的？",
+      "rubric": "提问深度 / 认知冲突张力 / 引导性",
+      "reference_depth_score": 0.85
+    },
+    {
+      "id": "sc-05",
+      "task_type": "tutor",
+      "input": "为什么天空是蓝色的？",
+      "actual_output": "因为瑞利散射——太阳光里的短波蓝光比长波红光更容易被大气分子散射，所以天空看起来是蓝的。",
+      "rubric": "提问深度 / 认知冲突张力 / 引导性",
+      "reference_depth_score": 0.1
+    }
+  ]
+}

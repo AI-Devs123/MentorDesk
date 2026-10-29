@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexusmind-eval"
+version = "0.1.0"
+description = "NexusMind 离线 DeepEval 批处理评测（Week 8 切片 5），与切片 4 在线 LLM-as-Judge 共享评分语义"
+readme = "README.md"
+requires-python = ">=3.9,<3.12"
+dependencies = [
+    # DeepEval 为 Python-only，独立于 Maven reactor；本模块不向任何 Java 构建注入依赖。
+    "deepeval>=2.0.0",
+    "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
