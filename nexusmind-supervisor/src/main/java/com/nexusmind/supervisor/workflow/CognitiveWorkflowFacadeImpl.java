@@ -58,8 +58,11 @@ public class CognitiveWorkflowFacadeImpl extends DubboCognitiveWorkflowFacadeTri
     /** 任务中断标志: taskId -> isCancelled */
     private static final Map<String, AtomicBoolean> TASK_CANCELLATION_FLAGS = new ConcurrentHashMap<>();
 
-    /** 运行中任务句柄: taskId -> Future (取消时 future.cancel(true) 可靠中断) */
+    /** 运行中任务句柄: taskId -> Future (保留字段, 取消语义走线程 interrupt) */
     private static final Map<String, Future<?>> RUNNING_FUTURES = new ConcurrentHashMap<>();
+
+    /** 运行中任务执行线程注册表: taskId -> Thread (收到取消后用于立即中断 worker) */
+    private static final Map<String, Thread> RUNNING_THREADS = new ConcurrentHashMap<>();
 
     /** DAG 执行线程池 (平台线程: JDK 17 基线) */
     private final java.util.concurrent.ExecutorService dagExecutor =
@@ -107,6 +110,8 @@ public class CognitiveWorkflowFacadeImpl extends DubboCognitiveWorkflowFacadeTri
         TASK_CANCELLATION_FLAGS.put(taskId, isAborted);
 
         Future<?> future = dagExecutor.submit(() -> {
+            // 注册执行线程, 供 cancelCognitiveTask 收到取消信号后立即中断
+            RUNNING_THREADS.put(taskId, Thread.currentThread());
             try {
                 // Step 1: JournalAgent 三要素抽取 + Append-only 落盘
                 emitProgress(responseObserver, taskId, "JournalAgent", "RUNNING",
