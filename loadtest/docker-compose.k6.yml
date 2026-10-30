@@ -1,0 +1,13 @@
+services:
+  # 单服务 k6 runner：脚本通过命令行参数传入。
+  # 使用 host 网络，使容器内能直连宿主上已起的网关(8080)/Supervisor(8081)。
+  # 前置：宿主机已 docker compose -f ../deploy/observability/docker-compose.yml up -d
+  #       且 nexusmind-gateway / nexusmind-supervisor 已启动（Nacos 注册可达）。
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./:/scripts
+    network_mode: host
+    entrypoint: ["k6"]
+    # 默认跑场景1；运行时用 `docker compose run k6 run /scripts/scenario-X.js` 覆盖
+    command: ["run", "/scripts/scenario-1-gateway-sse.js"]
