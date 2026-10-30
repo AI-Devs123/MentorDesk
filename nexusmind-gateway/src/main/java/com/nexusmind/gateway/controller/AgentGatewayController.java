@@ -49,7 +49,8 @@ public class AgentGatewayController {
     private static final Map<String, AtomicBoolean> TASK_CANCELLATION_FLAGS = new ConcurrentHashMap<>();
 
     // 注入 Supervisor 暴露的 Dubbo Triple 流式服务
-    @DubboReference
+    // 切片5：Triple 协议强制 fastjson2，规避 Hessian2 反序列化 record DTO 崩溃
+    @DubboReference(parameters = {"serialization=fastjson2"})
     private AgentStreamingFacade agentStreamingFacade;
     
     // 注入 JWT Token 提供者

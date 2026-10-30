@@ -1,9 +1,12 @@
 spring:
   application:
     name: nexusmind-agent-workers
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 server:
   port: 8082
+  shutdown: graceful
 
 dubbo:
   application:
@@ -44,6 +47,19 @@ observability:
 
 # 切片 1 可观测性基座：指标公共标签（application）；non-web 模块经 PushGateway 外推。
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+      livenessstate:
+        enabled: true
+      readinessstate:
+        enabled: true
   metrics:
     tags:
       application: ${spring.application.name}

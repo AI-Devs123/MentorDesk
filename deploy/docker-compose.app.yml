@@ -1,0 +1,182 @@
+# NexusMind 切片 5：全栈自愈编排（nacos + redis + 5 个 Spring Boot 模块）
+#
+# 一键拉起整套后端并具备自愈能力：
+#   docker compose -f deploy/docker-compose.app.yml up -d --build
+#
+# 自愈机制：
+#   - 每服务 restart: unless-stopped —— 进程崩溃/OOM 后由 Docker 自动拉起。
+#   - depends_on + healthcheck —— 严格按 nacos → redis → agent-workers → supervisor/rag → gateway
+#     的顺序就绪后启动，避免上游未注册即被调用（Nacos 无 Provider 时 sentinel 降级兜底）。
+#   - 应用侧探针打 /actuator/health/liveness（rag 为 non-web，改探 Dubbo Triple 端口 50054）。
+#   - 手动 `docker kill nexusmind-gateway` 后，Docker 会在 restart 策略下自动重建并重新注册 Nacos。
+#
+# 寻址覆盖（容器内不能用 localhost）：
+#   各模块 application.yml 默认 dubbo.registry.address=nacos://localhost:8848、redis host=localhost，
+#   容器内经 JVM 系统属性覆盖（Spring 宽松绑定，系统属性优先级高于 yml）：
+#     -Ddubbo.registry.address=nacos://nacos:8848
+#     -Dspring.data.redis.host=redis / -Dspring.redis.host=redis
+#
+# 与切片 2 可观测栈协同（不擅自改动切片 2 的 prometheus.yml）：
+#   切片 2 的 observability 栈按"宿主运行"模型，Prometheus 用 host.docker.internal 抓网关/ Supervisor。
+#   若要把本容器化栈也纳入监控，先把 observability 起好，再把 prometheus.yml 的抓取目标由
+#   host.docker.internal:8080 / :8081 改为容器服务名 gateway:8080 / supervisor:8081（同 bridge 网络），
+#   rag/agent-workers 经 PushGateway（localhost:9091 需改为 pushgateway:9091）外推。
+#   本文件保持自包含，不依赖 observability 先起，故未强制挂外部网络。
+
+services:
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: nexusmind-nacos
+    environment:
+      - MODE=standalone
+      - NACOS_AUTH_ENABLE=false
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
+    networks:
+      - nexusmind-net
+    healthcheck:
+      # Nacos 监听 8848 即视为就绪（standalone 启动较快）
+      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/127.0.0.1/8848 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexusmind-redis
+    networks:
+      - nexusmind-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  rag:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        MODULE: nexusmind-rag
+    container_name: nexusmind-rag
+    environment:
+      # rag 为 non-web：无 HTTP server；embedding.mock=true 使其无需真实 OpenAI 端点即可启动；
+      # push.enabled=false 关闭指标外推（避免连不存在的 PushGateway）。
+      - JAVA_OPTS=-Ddubbo.registry.address=nacos://nacos:8848 -Ddubbo.protocol.port=50054 -Dnexusmind.rag.index-dir=/app/data/lucene_indices -Dnexusmind.rag.embedding.mock=true -Dnexusmind.metrics.push.enabled=false
+    ports:
+      - "50054:50054"
+    volumes:
+      - rag-index:/app/data/lucene_indices
+    networks:
+      - nexusmind-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+    healthcheck:
+      # non-web：用 Dubbo Triple 端口探活（bash /dev/tcp，无需额外工具）
+      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/127.0.0.1/50054 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: unless-stopped
+
+  agent-workers:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        MODULE: nexusmind-agent-workers
+    container_name: nexusmind-agent-workers
+    environment:
+      - JAVA_OPTS=-Dserver.port=8082 -Ddubbo.registry.address=nacos://nacos:8848 -Ddubbo.protocol.port=50052 -Dspring.data.redis.host=redis -Dspring.redis.host=redis
+    ports:
+      - "8082:8082"
+      - "50052:50052"
+    networks:
+      - nexusmind-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health/liveness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: unless-stopped
+
+  supervisor:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        MODULE: nexusmind-supervisor
+    container_name: nexusmind-supervisor
+    environment:
+      - JAVA_OPTS=-Dserver.port=8081 -Ddubbo.registry.address=nacos://nacos:8848 -Ddubbo.protocol.port=50051 -Dspring.data.redis.host=redis -Dspring.redis.host=redis
+    ports:
+      - "8081:8081"
+      - "50051:50051"
+    networks:
+      - nexusmind-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent-workers:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health/liveness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        MODULE: nexusmind-gateway
+    container_name: nexusmind-gateway
+    environment:
+      - JAVA_OPTS=-Dserver.port=8080 -Ddubbo.registry.address=nacos://nacos:8848 -Ddubbo.protocol.port=50053 -Dspring.data.redis.host=redis
+    ports:
+      - "8080:8080"
+      - "50053:50053"
+    networks:
+      - nexusmind-net
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      supervisor:
+        condition: service_healthy
+      rag:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health/liveness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  nexusmind-net:
+    driver: bridge
+
+volumes:
+  rag-index:

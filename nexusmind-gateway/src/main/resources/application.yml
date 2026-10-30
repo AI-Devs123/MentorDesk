@@ -1,11 +1,14 @@
 server:
   port: 8080
+  shutdown: graceful
   servlet:
     context-path: /
 
 spring:
   application:
     name: nexusmind-gateway
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   data:
     redis:
       host: localhost
@@ -32,6 +35,8 @@ dubbo:
   consumer:
     timeout: 120000
     check: false
+    cluster: failover
+    retries: 1
   # gateway 虽为纯 consumer，Dubbo 3 启动时仍会导出内建元数据服务并绑定协议端口。
   # 三服务端口各有专职，避免互撞（此前 port:-1 回退默认 50051，与 supervisor 冲突）：
   #   supervisor 50051 / agent-workers 50052 / gateway 50053
@@ -56,6 +61,12 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+      livenessstate:
+        enabled: true
+      readinessstate:
+        enabled: true
   metrics:
     tags:
       application: ${spring.application.name}

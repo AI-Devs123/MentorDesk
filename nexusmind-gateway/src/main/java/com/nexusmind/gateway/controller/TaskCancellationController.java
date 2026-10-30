@@ -23,7 +23,8 @@ public class TaskCancellationController {
 
     private static final Logger log = LoggerFactory.getLogger(TaskCancellationController.class);
 
-    @DubboReference
+    // 切片5：Triple 协议强制 fastjson2，规避 Hessian2 反序列化 record DTO 崩溃
+    @DubboReference(parameters = {"serialization=fastjson2"})
     private AgentStreamingFacade agentStreamingFacade;
 
     /**

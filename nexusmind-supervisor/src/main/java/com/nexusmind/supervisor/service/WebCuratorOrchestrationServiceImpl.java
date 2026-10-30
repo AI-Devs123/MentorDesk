@@ -46,7 +46,8 @@ public class WebCuratorOrchestrationServiceImpl implements IWebCuratorOrchestrat
     private static final Logger log = LoggerFactory.getLogger(WebCuratorOrchestrationServiceImpl.class);
 
     /** Dubbo 消费者引用 agent-workers 的 WebCuratorAgent（公共契约接口）。 */
-    @DubboReference(timeout = 120000)
+    // 切片5：Triple 协议强制 fastjson2，规避 Hessian2 反序列化 record DTO 崩溃
+    @DubboReference(timeout = 120000, parameters = {"serialization=fastjson2"})
     private IWebCuratorService webCuratorService;
 
     /** 切片 8-1：知识自进化后置钩子（required=false，缺失时不阻断编排）。 */

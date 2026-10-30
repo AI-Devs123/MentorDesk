@@ -47,7 +47,8 @@ public class CognitiveGatewayController {
     /** 任务中断标志: taskId -> isCancelled (网关侧不再向前端推流) */
     private static final Map<String, AtomicBoolean> TASK_CANCELLATION_FLAGS = new ConcurrentHashMap<>();
 
-    @DubboReference
+    // 切片5：Triple 协议强制 fastjson2，规避 Hessian2 反序列化 record DTO 崩溃
+    @DubboReference(parameters = {"serialization=fastjson2"})
     private CognitiveWorkflowFacade cognitiveWorkflowFacade;
 
     @Autowired

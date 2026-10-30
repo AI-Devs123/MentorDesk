@@ -36,7 +36,8 @@ public class CodeOrchestrationServiceImpl implements ICodeOrchestrationService {
      * Dubbo 消费者引用 agent-workers 的 CodeAgent（公共契约接口）。
      * 服务方在 CodeAgentServiceImpl 上以 @DubboService(interfaceClass = ICodeAnalysisService.class) 导出。
      */
-    @DubboReference(timeout = 60000)
+    // 切片5：Triple 协议强制 fastjson2，规避 Hessian2 反序列化 record DTO 崩溃
+    @DubboReference(timeout = 60000, parameters = {"serialization=fastjson2"})
     private ICodeAnalysisService codeAnalysisService;
 
     /** 切片 8-1：知识自进化后置钩子（required=false，缺失时不阻断编排）。 */

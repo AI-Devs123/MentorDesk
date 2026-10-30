@@ -1,6 +1,8 @@
 spring:
   application:
     name: nexusmind-supervisor
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   redis:
     host: localhost
     port: 6379
@@ -15,6 +17,7 @@ spring:
 
 server:
   port: 8081
+  shutdown: graceful
   servlet:
     context-path: /
 
@@ -32,6 +35,12 @@ dubbo:
     port: 50051
   provider:
     filter: destructiveOperationDubboFilter,agentRbacDubboFilter
+  # 切片 5：消费端韧性（supervisor 调 agent-workers 的 Triple 服务）
+  consumer:
+    timeout: 30000
+    check: false
+    cluster: failover
+    retries: 1
 
 # 说明：llm.* 配置已移至 nexusmind-agent-workers/src/main/resources/application.yml
 # （读取方 LLMClient 属于 agent-workers 模块，配置应与实现同模块）。
@@ -59,6 +68,12 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+      livenessstate:
+        enabled: true
+      readinessstate:
+        enabled: true
   metrics:
     tags:
       application: ${spring.application.name}

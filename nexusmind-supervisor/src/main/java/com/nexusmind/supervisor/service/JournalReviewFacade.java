@@ -36,7 +36,8 @@ public class JournalReviewFacade {
      * timeout=30000: reviewAndPersist 内含真实 LLM 三要素抽取, 实测耗时 5s+,
      * 默认 Dubbo 引用超时(秒级)会触发 DEADLINE_EXCEEDED, 必须显式抬高 (切片4 实测修复)。
      */
-    @DubboReference(timeout = 30000)
+    // 切片5：Triple 协议强制 fastjson2，规避 Hessian2 反序列化 record DTO 崩溃
+    @DubboReference(timeout = 30000, parameters = {"serialization=fastjson2"})
     private IJournalReviewService journalReviewService;
 
     /**
