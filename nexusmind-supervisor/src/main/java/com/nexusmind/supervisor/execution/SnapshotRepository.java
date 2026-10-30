@@ -3,6 +3,7 @@ package com.nexusmind.supervisor.execution;
 import com.nexusmind.security.destructive.ExecutionSnapshot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nexusmind.supervisor.metrics.DestructiveOperationMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,10 @@ public class SnapshotRepository {
     // 会导致 validateAndConsumeToken 的 readValue 抛异常、令牌校验假失败。
     @Autowired
     private ObjectMapper objectMapper;
+
+    // 切片 1 可观测性：破坏性操作挂起/确认计数。required=false 避免无指标上下文（或单测未注入）时报错。
+    @Autowired(required = false)
+    private DestructiveOperationMetrics destructiveMetrics;
     
     /**
      * 保存快照到 Redis
@@ -49,8 +54,11 @@ public class SnapshotRepository {
             String json = objectMapper.writeValueAsString(snapshot);
             
             redisTemplate.opsForValue().set(key, json, DEFAULT_TTL_SECONDS, TimeUnit.SECONDS);
-            
+
             log.info("✅ 快照已保存到 Redis: key={}, ttl={}s", key, DEFAULT_TTL_SECONDS);
+            if (destructiveMetrics != null) {
+                destructiveMetrics.recordPending(snapshot.getOperationType().name(), snapshot.getRiskLevel().name());
+            }
             return true;
             
         } catch (Exception e) {
@@ -160,9 +168,15 @@ public class SnapshotRepository {
                 // 校验成功立即删除快照，防止二次重放破坏
                 redisTemplate.delete(key);
                 log.info("✅ 令牌校验成功，快照已消费: executionId={}", executionId);
+                if (destructiveMetrics != null) {
+                    destructiveMetrics.recordConfirmed();
+                }
                 return true;
             } else {
                 log.warn("❌ 令牌不匹配或无效: executionId={}", executionId);
+                if (destructiveMetrics != null) {
+                    destructiveMetrics.recordInvalid();
+                }
                 return false;
             }
             

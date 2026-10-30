@@ -139,6 +139,16 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- 可观测性：Actuator + Micrometer Prometheus 注册表（non-web 模块，指标经 PushGateway 外推） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

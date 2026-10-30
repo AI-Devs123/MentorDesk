@@ -45,3 +45,17 @@ observability:
     host: ${OBS_LANGFUSE_HOST:}
     public-key: ${OBS_LANGFUSE_PUBLIC_KEY:}
     secret-key: ${OBS_LANGFUSE_SECRET_KEY:}
+
+# 切片 1 可观测性基座：暴露 Prometheus 抓取端点（/actuator/prometheus）。
+# 本服务为 servlet（spring-boot-starter-web），SecurityConfig 已对 /actuator/prometheus 放行。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}

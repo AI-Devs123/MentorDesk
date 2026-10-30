@@ -23,6 +23,13 @@ nexusmind:
     model: bge-small-zh-v1.5
     # 显式开启后才允许无端点时的确定性伪向量降级（仅测试/演示用）
     mock: false
+  # 切片 1 可观测性：non-web 模块指标外推配置（默认关闭，见 MetricsPushConfig）
+  metrics:
+    push:
+      enabled: ${NEXUSMIND_PUSH_ENABLED:false}
+      gateway: ${NEXUSMIND_PUSH_GATEWAY:localhost:9091}
+      job: ${spring.application.name}
+      step-millis: 60000
 
 dubbo:
   application:
@@ -35,3 +42,10 @@ dubbo:
   protocol:
     name: tri
     port: 50054
+
+# 切片 1 可观测性基座：指标公共标签（application），便于在 Prometheus 中按服务区分。
+# rag 为 non-web（web-application-type: none），不暴露 /actuator/prometheus，指标经 PushGateway 外推。
+management:
+  metrics:
+    tags:
+      application: ${spring.application.name}

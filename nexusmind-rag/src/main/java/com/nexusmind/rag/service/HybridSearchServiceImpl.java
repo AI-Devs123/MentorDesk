@@ -10,6 +10,7 @@ import com.nexusmind.rag.engine.LuceneDualEngineManager;
 import com.nexusmind.rag.fusion.ReciprocalRankFusionService;
 import com.nexusmind.rag.rerank.BgeRerankerService;
 import com.nexusmind.rag.sanitizer.SearchResponseSanitizer;
+import com.nexusmind.rag.metrics.RagMetrics;
 import com.nexusmind.rag.security.AgentCollectionRbacGuard;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.slf4j.Logger;
@@ -48,19 +49,22 @@ public class HybridSearchServiceImpl implements IHybridSearchService {
     private final AgentCollectionRbacGuard rbacGuard;
     private final SearchResponseSanitizer sanitizer;
     private final BgeRerankerService rerankerService;
+    private final RagMetrics ragMetrics;
 
     public HybridSearchServiceImpl(LuceneDualEngineManager engineManager,
                                   EmbeddingClient embeddingClient,
                                   ReciprocalRankFusionService rrfService,
                                   AgentCollectionRbacGuard rbacGuard,
                                   SearchResponseSanitizer sanitizer,
-                                  BgeRerankerService rerankerService) {
+                                  BgeRerankerService rerankerService,
+                                  RagMetrics ragMetrics) {
         this.engineManager = engineManager;
         this.embeddingClient = embeddingClient;
         this.rrfService = rrfService;
         this.rbacGuard = rbacGuard;
         this.sanitizer = sanitizer;
         this.rerankerService = rerankerService;
+        this.ragMetrics = ragMetrics;
     }
 
     @Override
@@ -106,12 +110,18 @@ public class HybridSearchServiceImpl implements IHybridSearchService {
             log.info("[HybridSearch] query='{}', collection='{}', sparseHits={}, denseHits={}, fusedCount={}, rerank={}, elapsed={}ms",
                     request.query(), request.collection(), sparseHits.size(), denseHits.size(),
                     fused.size(), rerankReady, elapsed);
+            if (ragMetrics != null) {
+                ragMetrics.recordSearch(elapsed, finalCandidates.size(), rerankReady, true);
+            }
 
             // 5. 响应脱敏：无论快/慢路径，最终候选都要过 PII 脱敏，阻断经 Triple 逃逸（切片 3 P0 修复不得被绕过）
             List<FusedCandidate> sanitized = sanitizer.sanitize(finalCandidates);
             return new HybridSearchResponse(request.query(), request.collection(), elapsed, sanitized);
         } catch (Exception e) {
             log.error("[HybridSearch] 执行异常", e);
+            if (ragMetrics != null) {
+                ragMetrics.recordSearch(System.currentTimeMillis() - start, 0, false, false);
+            }
             throw new RuntimeException("混合检索执行失败: " + e.getMessage(), e);
         }
     }

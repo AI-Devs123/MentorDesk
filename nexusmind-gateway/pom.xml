@@ -63,6 +63,16 @@
             <version>3.30.0</version>
         </dependency>
 
+        <!-- 可观测性：Actuator + Micrometer Prometheus 注册表（指标由 Prometheus 主动 scrape） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <!-- 测试（WebTestClient / Mockito / JUnit） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

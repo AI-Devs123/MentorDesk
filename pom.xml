@@ -47,6 +47,15 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- 可观测性：Prometheus 指标暴露
+                 （Spring Boot BOM 不托管 micrometer-registry-prometheus，此处显式锁版本，
+                  与 Boot 3.3.4 的 micrometer.version=1.13.4 保持一致，避免与 micrometer-core 不匹配） -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-prometheus</artifactId>
+                <version>1.13.4</version>
+            </dependency>
+
             <!-- 内部 API 契约包 -->
             <dependency>
                 <groupId>com.nexusmind</groupId>

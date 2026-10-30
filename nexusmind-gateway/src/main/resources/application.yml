@@ -40,3 +40,18 @@ logging:
     root: INFO
     com.nexusmind: DEBUG
     org.apache.dubbo: WARN
+
+# 切片 1 可观测性基座：暴露 Prometheus 抓取端点（/actuator/prometheus）。
+# 网关为 WebFlux，SecurityConfig 是 servlet 过滤器对本上下文不生效，故 /actuator/prometheus 天然可达；
+# 安全收敛交由上层网关切面 / 内网隔离，此处不做鉴权（与 /actuator/health 同策略）。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}

@@ -9,8 +9,10 @@ import com.nexusmind.api.observability.LfTracingClient;
 import com.nexusmind.api.observability.LfTraceContext;
 import com.nexusmind.api.observability.NoOpLfTracingClient;
 import com.nexusmind.api.observability.TokenUsage;
+import com.nexusmind.agent.metrics.LlmCallMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -70,6 +72,10 @@ public class LLMClient {
     /** 延迟构建的探针客户端（@Value 在构造后注入，故不能在构造器里 new）。启用前恒为 null。 */
     private volatile LfTracingClient tracingClient;
 
+    // 切片 1 可观测性：LLM 调用指标。required=false 避免无 Spring 上下文（单测直接 new LLMClient）时注入失败。
+    @Autowired(required = false)
+    private LlmCallMetrics llmCallMetrics;
+
     public LLMClient() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(15))
@@ -121,9 +127,15 @@ public class LLMClient {
             log.info("[LLMClient] LLM 调用成功 (prompt={} completion={} total={})",
                     r.usage().promptTokens(), r.usage().completionTokens(), r.usage().totalTokens());
             reportGeneration(systemPrompt, userPrompt, r, llmStart, llmEnd);
+            if (llmCallMetrics != null) {
+                llmCallMetrics.recordCall(llmEnd - llmStart, r.usage().totalTokens(), true);
+            }
             return r.content();
         } catch (Exception e) {
             log.warn("[LLMClient] LLM 调用失败，降级到 Mock: {}", e.getMessage());
+            if (llmCallMetrics != null) {
+                llmCallMetrics.recordCall(0, 0, false);
+            }
             return mockSupplier.get();
         }
     }

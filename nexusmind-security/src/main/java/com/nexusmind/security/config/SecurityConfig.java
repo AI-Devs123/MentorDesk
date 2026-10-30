@@ -31,6 +31,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                // 切片 1：开放 Prometheus 抓取端点，供本地 Prometheus 定时拉取指标。
+                // 仅暴露指标端点（不暴露全部 actuator），生产环境建议进一步加网关切面/内网隔离。
+                .requestMatchers("/actuator/prometheus").permitAll()
                 .anyRequest().authenticated()
                 .and()
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

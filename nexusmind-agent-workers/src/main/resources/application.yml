@@ -38,3 +38,18 @@ observability:
     host: ${OBS_LANGFUSE_HOST:}
     public-key: ${OBS_LANGFUSE_PUBLIC_KEY:}
     secret-key: ${OBS_LANGFUSE_SECRET_KEY:}
+
+# 切片 1 可观测性基座：指标公共标签（application）；non-web 模块经 PushGateway 外推。
+management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# 切片 1：non-web 模块指标外推配置（默认关闭，见 MetricsPushConfig）
+nexusmind:
+  metrics:
+    push:
+      enabled: ${NEXUSMIND_PUSH_ENABLED:false}
+      gateway: ${NEXUSMIND_PUSH_GATEWAY:localhost:9091}
+      job: ${spring.application.name}
+      step-millis: 60000
