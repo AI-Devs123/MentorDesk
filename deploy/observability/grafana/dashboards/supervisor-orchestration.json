@@ -1,0 +1,46 @@
+{
+  "uid": "nexusmind-supervisor-orch",
+  "title": "Supervisor · 编排与破坏性操作",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "编排入口耗时 P95 (s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [ { "expr": "histogram_quantile(0.95, sum by (le, entry) (rate(nexusmind_dag_orchestration_seconds_bucket[5m])))", "legendFormat": "{{entry}}" } ]
+    },
+    {
+      "id": 2,
+      "title": "编排调用量（按入口/成败）",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [ { "expr": "sum by (entry, outcome) (rate(nexusmind_dag_orchestration_total[5m]))", "legendFormat": "{{entry}}/{{outcome}}" } ]
+    },
+    {
+      "id": 3,
+      "title": "破坏性操作：挂起 / 确认 / 无效",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(nexusmind_destructive_pending_total[5m]))", "legendFormat": "pending/s" },
+        { "expr": "sum(rate(nexusmind_destructive_confirmed_total[5m]))", "legendFormat": "confirmed/s" },
+        { "expr": "sum(rate(nexusmind_destructive_invalid_total[5m]))", "legendFormat": "invalid/s" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "挂起操作风险分布",
+      "type": "bargauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [ { "expr": "sum by (operation_type, risk_level) (nexusmind_destructive_pending_total)", "legendFormat": "{{operation_type}}/{{risk_level}}" } ]
+    }
+  ]
+}

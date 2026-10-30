@@ -1,0 +1,37 @@
+# NexusMind 切片 2：Prometheus 抓取配置
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: nexusmind-local
+
+# 切片 2 告警规则（SLO）
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+scrape_configs:
+  # 网关（WebFlux，servlet 过滤器不生效，/actuator/prometheus 天然可达）
+  - job_name: nexusmind-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          tier: gateway
+
+  # 编排/鉴权服务（servlet，SecurityConfig 已放行 /actuator/prometheus）
+  - job_name: nexusmind-supervisor
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          tier: supervisor
+
+  # PushGateway 聚合 rag / agent-workers（non-web）外推的指标。
+  # honor_labels: true 保留被推入的 job=nexusmind-rag / nexusmind-agent-workers 与 instance。
+  - job_name: nexusmind-pushgateway
+    metrics_path: /metrics
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+        labels:
+          tier: pushgateway

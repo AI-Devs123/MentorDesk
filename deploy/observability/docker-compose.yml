@@ -1,0 +1,58 @@
+# NexusMind 切片 2：可视化与告警基座（Prometheus + PushGateway + Grafana）
+#
+# 设计要点：
+#  - 业务进程运行在宿主机（Windows）的 localhost：gateway:8080 / supervisor:8081。
+#    Prometheus 在容器内通过 host.docker.internal 抓取这两个 /actuator/prometheus。
+#  - rag / agent-workers 为 non-web，指标经 MetricsPushConfig 推到 localhost:9091（已 publish 到宿主）。
+#    Prometheus 再抓取 PushGateway（容器服务名 pushgateway:9091），honor_labels 保留其 job/instance。
+#  - Grafana 自动 provisioning 数据源与仪表盘，admin/admin。
+#
+# 运行（务必关沙箱，否则镜像拉取/端口映射被拦）：
+#   cd deploy/observability
+#   docker compose up -d
+# 验收：浏览器开 http://localhost:3000 （Grafana）、http://localhost:9090 （Prometheus Targets 应全 UP）。
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: nexusmind-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    networks:
+      - nexusmind-obs
+    restart: unless-stopped
+
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: nexusmind-pushgateway
+    ports:
+      - "9091:9091"
+    networks:
+      - nexusmind-obs
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: nexusmind-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - nexusmind-obs
+    restart: unless-stopped
+
+networks:
+  nexusmind-obs:
+    driver: bridge

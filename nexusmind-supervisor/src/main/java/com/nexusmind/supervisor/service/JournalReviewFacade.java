@@ -4,6 +4,8 @@ import com.nexusmind.api.dto.DataPayload;
 import com.nexusmind.api.service.IJournalReviewService;
 import com.nexusmind.supervisor.evolution.KnowledgeEvolutionService;
 import com.nexusmind.supervisor.evolution.TaskCompletionEvent;
+import com.nexusmind.supervisor.resilience.CircuitBreakerOpenException;
+import com.nexusmind.supervisor.resilience.ResilientDownstreamCaller;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -45,6 +47,13 @@ public class JournalReviewFacade {
     private KnowledgeEvolutionService evolutionService;
 
     /**
+     * 切片 3：下游 Dubbo 调用熔断器（required=false 防御性——未注入时退化为直连，
+     * 与 {@code evolutionService} 同策略，确保门面在最小上下文也不 NPE）。
+     */
+    @Autowired(required = false)
+    private ResilientDownstreamCaller resilientDownstream;
+
+    /**
      * 审查日记并落盘
      * 委托给 agent-workers 的实现（跨进程 Dubbo 调用）
      *
@@ -52,7 +61,20 @@ public class JournalReviewFacade {
      * @return 包含条目、路径、统计信息的数据载体
      */
     public DataPayload reviewAndPersist(String rawContent) {
-        DataPayload payload = journalReviewService.reviewAndPersist(rawContent);
+        // 切片 3：下游 Dubbo 调用纳入 Sentinel 熔断保护。熔断打开时抛 CircuitBreakerOpenException，
+        // 由调用方（Controller）返回 503 友好提示，避免已故障的下游被持续打满导致雪崩。
+        DataPayload payload;
+        if (resilientDownstream != null) {
+            payload = resilientDownstream.call(
+                    "downstream:journalReviewService",
+                    () -> journalReviewService.reviewAndPersist(rawContent),
+                    () -> {
+                        throw new CircuitBreakerOpenException(
+                                "日记审查下游熔断（journalReviewService 不可用）");
+                    });
+        } else {
+            payload = journalReviewService.reviewAndPersist(rawContent);
+        }
         if (evolutionService != null) {
             evolutionService.onTaskCompleted(TaskCompletionEvent.forJournal(rawContent));
         }

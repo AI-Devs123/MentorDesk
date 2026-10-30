@@ -9,6 +9,9 @@ dubbo:
   application:
     name: nexusmind-agent-workers
     qos-enable: false
+  # 切片 2：开启 Dubbo Triple 指标。agent-workers 为 non-web，指标经 PushGateway 外推。
+  metrics:
+    enabled: true
   registry:
     address: nacos://localhost:8848
   protocol:

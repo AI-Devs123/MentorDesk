@@ -25,6 +25,8 @@
         <spring-boot.version>3.3.4</spring-boot.version>
         <dubbo.version>3.2.14</dubbo.version>
         <protobuf.version>3.25.3</protobuf.version>
+        <!-- 切片 3：Sentinel 熔断/限流核心（仅 sentinel-core，避免 webmvc 适配器的 javax/jakarta 不兼容） -->
+        <sentinel.version>1.8.8</sentinel.version>
     </properties>
 
     <dependencyManagement>
@@ -75,6 +77,13 @@
                 <groupId>com.nexusmind</groupId>
                 <artifactId>nexusmind-agent-workers</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- 切片 3：Sentinel 熔断/限流核心（仅 core，自研 WebFilter/Filter 适配 Boot3 jakarta） -->
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-core</artifactId>
+                <version>${sentinel.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

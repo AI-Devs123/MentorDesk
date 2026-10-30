@@ -1,0 +1,77 @@
+{
+  "uid": "nexusmind-overview",
+  "title": "NexusMind 总览",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+        "query": "label_values(up, job)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "服务存活 (up)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [ { "expr": "up", "legendFormat": "{{job}} / {{instance}}" } ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2,
+      "title": "活跃 SSE 会话",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [ { "expr": "nexusmind_sse_active_sessions", "legendFormat": "sse" } ]
+    },
+    {
+      "id": 3,
+      "title": "编排调用 QPS（按入口）",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [ { "expr": "sum by (entry) (rate(nexusmind_dag_orchestration_total[5m]))", "legendFormat": "{{entry}}" } ]
+    },
+    {
+      "id": 4,
+      "title": "各业务流量 QPS",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(nexusmind_sse_sessions_total[5m])", "legendFormat": "sse" },
+        { "expr": "rate(nexusmind_rag_hybrid_search_total[5m])", "legendFormat": "rag-search" },
+        { "expr": "rate(nexusmind_llm_calls_total[5m])", "legendFormat": "llm" },
+        { "expr": "rate(nexusmind_destructive_pending_total[5m])", "legendFormat": "destructive-pending" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Dubbo Provider QPS",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [ { "expr": "sum by (application) (rate(dubbo_provider_requests_total[5m]))", "legendFormat": "{{application}}" } ]
+    },
+    {
+      "id": 6,
+      "title": "触发中的告警 (ALERTS)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 14 },
+      "targets": [ { "expr": "max by (alertname,severity) (ALERTS{alertstate=\"firing\"})", "legendFormat": "{{alertname}} ({{severity}})" } ]
+    }
+  ]
+}

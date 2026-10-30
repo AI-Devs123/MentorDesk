@@ -1,0 +1,43 @@
+{
+  "uid": "nexusmind-gateway-sse",
+  "title": "Gateway · SSE 流",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "活跃 SSE 会话数",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [ { "expr": "nexusmind_sse_active_sessions", "legendFormat": "active" } ]
+    },
+    {
+      "id": 2,
+      "title": "SSE 会话累计开启",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [ { "expr": "rate(nexusmind_sse_sessions_total[5m])", "legendFormat": "opens/s" } ]
+    },
+    {
+      "id": 3,
+      "title": "SSE 异常会话累计",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [ { "expr": "rate(nexusmind_sse_errors_total[5m])", "legendFormat": "errors/s" } ]
+    },
+    {
+      "id": 4,
+      "title": "SSE 错误率",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [ { "expr": "rate(nexusmind_sse_errors_total[5m]) / clamp_min(rate(nexusmind_sse_sessions_total[5m]), 0.001)", "legendFormat": "error-rate" } ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    }
+  ]
+}

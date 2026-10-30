@@ -1,0 +1,55 @@
+{
+  "uid": "nexusmind-dubbo-triple",
+  "title": "Dubbo · Triple RPC",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+        "query": "label_values(dubbo_provider_requests_total, application)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Provider QPS（按应用）",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [ { "expr": "sum by (application) (rate(dubbo_provider_requests_total[5m]))", "legendFormat": "{{application}}" } ]
+    },
+    {
+      "id": 2,
+      "title": "Consumer QPS（按应用）",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [ { "expr": "sum by (application) (rate(dubbo_consumer_requests_total[5m]))", "legendFormat": "{{application}}" } ]
+    },
+    {
+      "id": 3,
+      "title": "Provider P99 延迟 (ms)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [ { "expr": "dubbo_provider_rt_milliseconds{quantile=\"0.99\"}", "legendFormat": "{{application}}" } ]
+    },
+    {
+      "id": 4,
+      "title": "Provider 错误率",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus-ds" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [ { "expr": "sum by (application) (rate(dubbo_provider_requests_error_total[5m])) / clamp_min(sum by (application) (rate(dubbo_provider_requests_total[5m])), 0.001)", "legendFormat": "{{application}}" } ]
+    }
+  ]
+}

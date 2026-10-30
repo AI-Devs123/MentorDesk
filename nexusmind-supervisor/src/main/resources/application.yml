@@ -22,6 +22,9 @@ dubbo:
   application:
     name: nexusmind-supervisor
     qos-enable: false
+  # 切片 2：开启 Dubbo Triple 指标（本服务为 provider，暴露 qps/rt/error 到 /actuator/prometheus）。
+  metrics:
+    enabled: true
   registry:
     address: nacos://localhost:8848
   protocol:
@@ -59,3 +62,25 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+# 切片 3：Sentinel 接入层限流/熔断（仅 sentinel-core，自研 jakarta Filter 接入）。
+sentinel:
+  enabled: true
+  excluded-paths:
+    - /actuator
+    - /swagger-ui
+    - /v3/api-docs
+  flow-rules:
+    - resource: "POST:/api/v1/journal/review"
+      count: 20
+      grade: 1
+  degrade-rules:
+    # 保护跨进程 Dubbo 下游（agent-workers 的 journalReviewService）：
+    # 当调用异常比例超 50%（近 10s 内至少 5 次请求），熔断 5s 走降级，
+    # 避免下游 agent-workers 故障被持续打满造成雪崩。
+    - resource: "downstream:journalReviewService"
+      grade: 1
+      count: 0.5
+      min-request-amount: 5
+      stat-interval-ms: 10000
+      time-window-ms: 5000

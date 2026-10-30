@@ -115,6 +115,12 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
+        <!-- 切片 3：Sentinel 熔断/限流核心（仅 core，servlet 端用自研 jakarta Filter 接入，避开 webmvc 适配器的 javax 不兼容） -->
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-core</artifactId>
+        </dependency>
+
         <!-- 测试 (切片4: DAG 编排与 Persona 单测, 含 Mockito) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

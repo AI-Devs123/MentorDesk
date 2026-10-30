@@ -73,6 +73,12 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
+        <!-- 切片 3：Sentinel 熔断/限流核心（仅 core，WebFlux 网关用自研 WebFilter 接入） -->
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-core</artifactId>
+        </dependency>
+
         <!-- 测试（WebTestClient / Mockito / JUnit） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

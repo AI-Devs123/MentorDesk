@@ -1,0 +1,76 @@
+# NexusMind 切片 2：SLO 告警规则（Prometheus 原生评估）
+# 指标名均来自切片 1 的 nexusmind_* 埋点与 Dubbo Triple 指标（切片 2 已开启 dubbo.metrics）。
+groups:
+  - name: nexusmind-slo
+    rules:
+      - alert: SseErrorRateHigh
+        expr: |
+          rate(nexusmind_sse_errors_total[5m])
+            / clamp_min(rate(nexusmind_sse_sessions_total[5m]), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "网关 SSE 错误率超过 5%"
+          description: "nexusmind_sse_errors_total 近 5m 错误率 > 5%，检查 SSE 控制器与下游依赖。"
+
+      - alert: DagOrchestrationFailure
+        expr: |
+          rate(nexusmind_dag_orchestration_total{outcome="ERROR"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "supervisor 编排入口出现失败"
+          description: "编排入口 out come=ERROR 的 QPS > 0，关注 JournalReview/Tutor/Code/Web 编排链路。"
+
+      - alert: DestructivePendingSpike
+        expr: |
+          increase(nexusmind_destructive_pending_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "破坏性操作挂起量激增"
+          description: "近 5m 进入人机二次确认的破坏性操作 > 20，可能为批量危险操作或异常触发。"
+
+      - alert: LlmErrorRateHigh
+        expr: |
+          rate(nexusmind_llm_calls_total{status="error"}[5m])
+            / clamp_min(rate(nexusmind_llm_calls_total[5m]), 0.001) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 调用错误率超过 10%"
+          description: "nexusmind_llm_calls_total{status=error} 占比 > 10%，检查 LLMClient 下游与降级逻辑。"
+
+      - alert: DubboProviderErrorRateHigh
+        expr: |
+          rate(dubbo_provider_requests_error_total[5m])
+            / clamp_min(rate(dubbo_provider_requests_total[5m]), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: error
+        annotations:
+          summary: "Dubbo Provider 错误率超过 5%"
+          description: "dubbo_provider_requests_error_total 占比 > 5%，Dubbo Triple 提供方异常升高。"
+
+      - alert: DubboProviderP99High
+        expr: |
+          dubbo_provider_rt_milliseconds{quantile="0.99"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dubbo Provider P99 延迟 > 1s"
+          description: "dubbo_provider_rt_milliseconds{quantile=0.99} > 1000ms，下游 RPC 变慢。"
+
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: error
+        annotations:
+          summary: "抓取目标掉线"
+          description: "Prometheus 无法抓取目标（up==0），检查进程或网络。"

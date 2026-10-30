@@ -23,6 +23,10 @@ dubbo:
   application:
     name: nexusmind-gateway
     qos-enable: false
+  # 切片 2：开启 Dubbo Triple 指标（provider/consumer 的 qps/rt/error），
+  # 经 micrometer 进入 nexusmind-gateway 的 /actuator/prometheus 由 Prometheus 抓取。
+  metrics:
+    enabled: true
   registry:
     address: nacos://localhost:8848
   consumer:
@@ -55,3 +59,32 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+# 切片 3：Sentinel 接入层限流/熔断（仅 sentinel-core，自研 WebFlux WebFilter 接入）。
+# 网关作为最前端，对核心路由做 QPS 限流，防止突发流量打垮下游（supervisor/agent）。
+# 熔断资源（downstream:*）为网关→supervisor 下游预留，规则已就绪，待真实跨进程调用后生效。
+sentinel:
+  enabled: true
+  excluded-paths:
+    - /actuator
+    - /swagger-ui
+    - /v3/api-docs
+    - /health
+    - /api/v1/health
+  flow-rules:
+    - resource: "GET:/api/v1/agent"
+      count: 50
+      grade: 1
+    - resource: "POST:/api/v1/journal/review"
+      count: 20
+      grade: 1
+    - resource: "GET:/api/v1/search"
+      count: 30
+      grade: 1
+  degrade-rules:
+    - resource: "downstream:supervisor"
+      grade: 1
+      count: 0.5
+      min-request-amount: 10
+      stat-interval-ms: 10000
+      time-window-ms: 5000
